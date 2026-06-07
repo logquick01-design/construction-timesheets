@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  SITE_MANAGER
+  QS
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  siteAssignments SiteManagerAssignment[]
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  name      String
+  location  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  managers   SiteManagerAssignment[]
+  companies  Company[]
+  workers    Worker[]
+  categories CostCodeCategory[]
+  tasks      CostCodeTask[]
+  timesheets TimesheetEntry[]
+}
+
+model SiteManagerAssignment {
+  id     String @id @default(cuid())
+  userId String
+  siteId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, siteId])
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  siteId    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site    Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workers Worker[]
+
+  @@unique([siteId, name])
+  @@index([siteId])
+}
+
+model Worker {
+  id        String   @id @default(cuid())
+  name      String
+  trade     String
+  siteId    String
+  companyId String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site       Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company    Company?         @relation(fields: [companyId], references: [id])
+  timesheets TimesheetEntry[]
+
+  @@index([siteId])
+  @@index([companyId])
+}
+
+model CostCodeCategory {
+  id        String   @id @default(cuid())
+  name      String
+  siteId    String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site  Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  tasks CostCodeTask[]
+
+  @@unique([siteId, name])
+  @@index([siteId])
+}
+
+model CostCodeTask {
+  id         String   @id @default(cuid())
+  name       String
+  reference  String
+  siteId     String
+  categoryId String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  site       Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  category   CostCodeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  timesheets TimesheetEntry[]
+
+  @@index([siteId])
+  @@index([categoryId])
+}
+
+model TimesheetEntry {
+  id        String   @id @default(cuid())
+  workerId  String
+  siteId    String
+  taskId    String
+  date      DateTime
+  hours     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  worker Worker       @relation(fields: [workerId], references: [id])
+  site   Site         @relation(fields: [siteId], references: [id])
+  task   CostCodeTask @relation(fields: [taskId], references: [id])
+
+  @@index([siteId, date])
+  @@index([workerId, date])
+}

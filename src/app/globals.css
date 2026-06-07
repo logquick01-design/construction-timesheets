@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-850: #1a2332;
+  --color-slate-750: #2a3544;
+  --color-accent: #c4783b;
+  --color-accent-hover: #a86432;
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+input,
+select,
+button {
+  font-size: 16px;
+}
+
+@media (min-width: 640px) {
+  input,
+  select,
+  button {
+    font-size: inherit;
+  }
+}
