@@ -87,7 +87,7 @@ warn_if_railway_without_volume
 require_auth_secret
 
 echo "Applying database schema..."
-npx prisma db push --skip-generate
+node_modules/.bin/prisma db push --skip-generate
 
 USER_COUNT="$(node <<'NODE'
 const { PrismaClient } = require("@prisma/client");
@@ -100,16 +100,13 @@ prisma.user
 NODE
 )"
 
-PORT="${PORT:-3000}"
-echo "Starting server on 0.0.0.0:${PORT}..."
-node node_modules/next/dist/bin/next start -H 0.0.0.0 -p "$PORT" &
-NEXT_PID=$!
-
 if [[ "$USER_COUNT" == "0" ]]; then
   echo "Empty database — seeding demo data..."
-  npx tsx prisma/seed.ts
+  node_modules/.bin/tsx prisma/seed.ts
 else
   echo "Database already seeded ($USER_COUNT users)."
 fi
 
-wait "$NEXT_PID"
+PORT="${PORT:-3000}"
+echo "Starting server on 0.0.0.0:${PORT}..."
+exec node node_modules/next/dist/bin/next start -H 0.0.0.0 -p "$PORT"
