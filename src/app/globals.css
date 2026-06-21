@@ -8,6 +8,10 @@
   --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+:root {
+  --app-header-height: 3.25rem;
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
 }
