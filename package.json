@@ -2,6 +2,9 @@
   "name": "logq",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
@@ -27,7 +30,9 @@
     "react-dom": "^19.1.0",
     "recharts": "^2.15.3",
     "tailwind-merge": "^3.3.0",
-    "zod": "^3.25.51"
+    "zod": "^3.25.51",
+    "prisma": "^6.9.0",
+    "tsx": "^4.19.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",
@@ -37,9 +42,7 @@
     "@types/react-dom": "^19.1.5",
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
-    "prisma": "^6.9.0",
     "tailwindcss": "^4.1.8",
-    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
 }
