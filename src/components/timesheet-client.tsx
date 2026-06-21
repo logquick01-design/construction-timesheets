@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
-import { Button, Input, Label, Select } from "./ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Input, Label, Select } from "./ui";
 import { TimeRangeInput } from "./time-range-input";
 import {
   DEFAULT_FINISH_TIME,
   DEFAULT_START_TIME,
   calcHoursFromTimes,
   finishTimeFromHours,
+  formatHours,
 } from "@/lib/time-utils";
+import { cn } from "@/lib/utils";
 import type { UserRole } from "@prisma/client";
 
 type Site = { id: string; name: string };
@@ -34,6 +36,7 @@ type Entry = {
   workerId: string;
   taskId: string;
   hours: number;
+  comment: string | null;
   task: { categoryId: string };
 };
 
@@ -42,9 +45,32 @@ type Row = {
   workerId: string;
   categoryId: string;
   taskId: string;
+  comment: string;
   startTime: string;
   finishTime: string;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+function buildPayload(rows: Row[]) {
+  return rows
+    .map((r) => ({
+      ...r,
+      hours: calcHoursFromTimes(r.startTime, r.finishTime),
+    }))
+    .filter((r) => r.taskId && r.hours != null && r.hours > 0)
+    .map((r) => ({
+      workerId: r.workerId,
+      taskId: r.taskId,
+      hours: r.hours!,
+      comment: (r.comment ?? "").trim() || undefined,
+    }));
+}
+
+function isRowComplete(row: Row): boolean {
+  const hours = calcHoursFromTimes(row.startTime, row.finishTime);
+  return Boolean(row.taskId && hours != null && hours > 0);
+}
 
 export function TimesheetClient({
   role,
@@ -64,8 +90,17 @@ export function TimesheetClient({
   const [categories, setCategories] = useState<Category[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [saveError, setSaveError] = useState("");
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const skipAutoSaveRef = useRef(true);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveVersionRef = useRef(0);
+  const rowsRef = useRef(rows);
+  const saveQueueRef = useRef(Promise.resolve());
+
+  rowsRef.current = rows;
 
   useEffect(() => {
     if (lockedSiteId) return;
@@ -84,29 +119,31 @@ export function TimesheetClient({
   const loadTimesheet = useCallback(async () => {
     if (!siteId || !date) return;
     setLoading(true);
-    setMessage("");
+    setLoadError("");
+    skipAutoSaveRef.current = true;
     const res = await fetch(
       `/api/timesheet?siteId=${siteId}&date=${encodeURIComponent(date)}`
     );
     const data = await res.json();
     setLoading(false);
     if (!res.ok) {
-      setMessage(data.error ?? "Failed to load");
+      setLoadError(data.error ?? "Failed to load");
       return;
     }
     setWorkers(data.workers);
     setCategories(data.categories);
-    const initial: Row[] = (data.entries as (Entry & { workerId: string; taskId: string; hours: number })[]).map(
-      (e, i) => ({
-        key: `existing-${i}`,
-        workerId: e.workerId,
-        categoryId: e.task.categoryId,
-        taskId: e.taskId,
-        startTime: DEFAULT_START_TIME,
-        finishTime: finishTimeFromHours(DEFAULT_START_TIME, e.hours),
-      })
-    );
+    const initial: Row[] = (data.entries as Entry[]).map((e, i) => ({
+      key: `existing-${i}`,
+      workerId: e.workerId,
+      categoryId: e.task.categoryId,
+      taskId: e.taskId,
+      comment: e.comment ?? "",
+      startTime: DEFAULT_START_TIME,
+      finishTime: finishTimeFromHours(DEFAULT_START_TIME, e.hours),
+    }));
     setRows(initial);
+    setExpandedRows(new Set());
+    setSaveStatus("idle");
   }, [siteId, date]);
 
   useEffect(() => {
@@ -119,20 +156,46 @@ export function TimesheetClient({
     return map;
   }, [categories]);
 
+  const tasksById = useMemo(() => {
+    const map: Record<string, Task> = {};
+    for (const c of categories) {
+      for (const t of c.tasks) map[t.id] = t;
+    }
+    return map;
+  }, [categories]);
+
+  const categoriesById = useMemo(() => {
+    const map: Record<string, Category> = {};
+    for (const c of categories) map[c.id] = c;
+    return map;
+  }, [categories]);
+
   function addRow(workerId: string) {
     const firstCat = categories[0];
     const firstTask = firstCat?.tasks[0];
+    const key = `new-${Date.now()}-${Math.random()}`;
     setRows((prev) => [
       ...prev,
       {
-        key: `new-${Date.now()}-${Math.random()}`,
+        key,
         workerId,
         categoryId: firstCat?.id ?? "",
         taskId: firstTask?.id ?? "",
+        comment: "",
         startTime: DEFAULT_START_TIME,
         finishTime: DEFAULT_FINISH_TIME,
       },
     ]);
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      for (const r of rowsRef.current) {
+        if (r.workerId === workerId && isRowComplete(r)) {
+          next.delete(r.key);
+        }
+      }
+      next.add(key);
+      return next;
+    });
   }
 
   function updateRow(key: string, patch: Partial<Row>) {
@@ -151,44 +214,106 @@ export function TimesheetClient({
 
   function removeRow(key: string) {
     setRows((prev) => prev.filter((r) => r.key !== key));
+    setExpandedRows((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
   }
 
-  async function save() {
-    if (!siteId) return;
-    const payload = rows
-      .map((r) => ({
-        ...r,
-        hours: calcHoursFromTimes(r.startTime, r.finishTime),
-      }))
-      .filter((r) => r.taskId && r.hours != null && r.hours > 0)
-      .map((r) => ({
-        workerId: r.workerId,
-        taskId: r.taskId,
-        hours: r.hours!,
-      }));
+  function expandRow(key: string) {
+    setExpandedRows((prev) => new Set(prev).add(key));
+  }
 
-    setSaving(true);
-    setMessage("");
-    const res = await fetch("/api/timesheet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ siteId, date, rows: payload }),
+  function collapseRow(key: string) {
+    setExpandedRows((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
     });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setMessage(data.error ?? "Save failed");
+  }
+
+  const runSave = useCallback(async () => {
+    if (!siteId) return;
+
+    const version = ++saveVersionRef.current;
+    const payload = buildPayload(rowsRef.current);
+
+    setSaveStatus("saving");
+    setSaveError("");
+
+    try {
+      const res = await fetch("/api/timesheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId, date, rows: payload }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+
+      if (version !== saveVersionRef.current) return;
+
+      if (!res.ok) {
+        setSaveError(data.error ?? "Save failed");
+        setSaveStatus("error");
+        return;
+      }
+
+      setSaveStatus("saved");
+    } catch {
+      if (version === saveVersionRef.current) {
+        setSaveError("Network error");
+        setSaveStatus("error");
+      }
+    }
+  }, [siteId, date]);
+
+  const enqueueSave = useCallback(() => {
+    saveQueueRef.current = saveQueueRef.current.then(runSave).catch(() => {
+      // runSave already updates saveStatus on failure
+    });
+  }, [runSave]);
+
+  useEffect(() => {
+    if (!siteId || !date || loading) return;
+
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false;
       return;
     }
-    setMessage(`Saved ${data.count} entries`);
-    loadTimesheet();
-  }
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      enqueueSave();
+    }, 1000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [rows, siteId, date, loading, enqueueSave]);
+
+  useEffect(() => {
+    if (saveStatus !== "saved") return;
+    const timer = setTimeout(() => setSaveStatus("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [saveStatus]);
 
   const rowsByWorker = useMemo(() => {
     const map: Record<string, Row[]> = {};
     for (const r of rows) {
       if (!map[r.workerId]) map[r.workerId] = [];
       map[r.workerId].push(r);
+    }
+    return map;
+  }, [rows]);
+
+  const hoursByWorker = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      const hours = calcHoursFromTimes(r.startTime, r.finishTime);
+      if (hours == null || hours <= 0) continue;
+      map[r.workerId] = Math.round(((map[r.workerId] ?? 0) + hours) * 100) / 100;
     }
     return map;
   }, [rows]);
@@ -209,47 +334,54 @@ export function TimesheetClient({
   return (
     <div className="space-y-4">
       <div className="sticky top-[var(--app-header-height)] z-30 -mx-4 border-b border-slate-200 bg-slate-100/95 px-4 py-3 backdrop-blur">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="flex flex-wrap items-end gap-3 sm:flex-1">
-            <div className="min-w-[140px] flex-1">
-              <Label htmlFor="ts-date">Date</Label>
-              <Input
-                id="ts-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-            {!lockedSiteId && (
-              <div className="min-w-[160px] flex-[2]">
-                <Label htmlFor="ts-site">Site</Label>
-                <Select
-                  id="ts-site"
-                  value={siteId}
-                  onChange={(e) => setSiteId(e.target.value)}
-                  disabled={sites.length <= 1 && role === "SITE_MANAGER"}
-                >
-                  <option value="">Select site…</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[140px] flex-1">
+            <Label htmlFor="ts-date">Date</Label>
+            <Input
+              id="ts-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
-          <Button
-            size="lg"
-            onClick={save}
-            disabled={saving || !siteId || loading}
-            className="w-full sm:ml-auto sm:w-auto sm:min-w-[120px]"
-          >
-            {saving ? "Saving…" : "Save all"}
-          </Button>
+          {!lockedSiteId && (
+            <div className="min-w-[160px] flex-[2]">
+              <Label htmlFor="ts-site">Site</Label>
+              <Select
+                id="ts-site"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                disabled={sites.length <= 1 && role === "SITE_MANAGER"}
+              >
+                <option value="">Select site…</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          {siteId && !loading && (
+            <p
+              className={`ml-auto text-sm ${
+                saveStatus === "error"
+                  ? "text-red-600"
+                  : saveStatus === "saved"
+                    ? "text-green-700"
+                    : "text-slate-500"
+              }`}
+              aria-live="polite"
+            >
+              {saveStatus === "saving" && "Saving…"}
+              {saveStatus === "saved" && "Saved"}
+              {saveStatus === "error" && (saveError || "Couldn't save — try again")}
+              {saveStatus === "idle" && "Changes save automatically"}
+            </p>
+          )}
         </div>
-        {message && (
-          <p className="mt-2 text-sm text-slate-700">{message}</p>
+        {loadError && (
+          <p className="mt-2 text-sm text-red-600">{loadError}</p>
         )}
       </div>
 
@@ -269,85 +401,221 @@ export function TimesheetClient({
               </span>
             </h2>
             <div className="space-y-3">
-              {group.workers.map((w) => (
+              {group.workers.map((w) => {
+                const workerRows = rowsByWorker[w.id] ?? [];
+                const workerTotal = hoursByWorker[w.id] ?? 0;
+
+                return (
                 <div
                   key={w.id}
                   className="overflow-hidden rounded-xl border border-slate-200 bg-white"
                 >
                   <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2">
-                    <div>
+                    <div className="min-w-0">
                       <span className="font-semibold text-slate-850">{w.name}</span>
                       <span className="ml-2 text-sm text-slate-500">{w.trade}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => addRow(w.id)}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
-                      aria-label={`Add task for ${w.name}`}
-                    >
-                      <Plus size={22} />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {workerRows.length > 0 && (
+                        <span
+                          className="text-sm font-semibold tabular-nums text-slate-700"
+                          aria-label={`${workerTotal} hours logged today`}
+                        >
+                          {workerTotal > 0 ? formatHours(workerTotal) : "0 hrs"}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => addRow(w.id)}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
+                        aria-label={`Add task for ${w.name}`}
+                      >
+                        <Plus size={22} />
+                      </button>
+                    </div>
                   </div>
 
                   {(rowsByWorker[w.id] ?? []).length === 0 ? (
                     <p className="px-3 py-2 text-sm text-slate-400">Tap + to add hours</p>
                   ) : (
                     <div className="divide-y divide-slate-100">
-                      {(rowsByWorker[w.id] ?? []).map((row) => (
-                        <div
-                          key={row.key}
-                          className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-[1fr_1fr_minmax(0,auto)_40px] sm:items-center"
-                        >
-                          <Select
-                            value={row.categoryId}
-                            onChange={(e) =>
-                              updateRow(row.key, { categoryId: e.target.value })
-                            }
-                            aria-label="Category"
+                      {(rowsByWorker[w.id] ?? []).map((row, rowIndex) => {
+                        const compact = rowIndex > 0;
+                        const complete = isRowComplete(row);
+                        const isExpanded = expandedRows.has(row.key) || !complete;
+                        const categoryName =
+                          categoriesById[row.categoryId]?.name ?? "Category";
+                        const task = tasksById[row.taskId];
+                        const taskLabel = task
+                          ? `${task.name} (${task.reference})`
+                          : "Task";
+                        const hours = calcHoursFromTimes(row.startTime, row.finishTime);
+                        const hasComment = row.comment.trim().length > 0;
+
+                        if (!isExpanded && complete) {
+                          return (
+                            <div
+                              key={row.key}
+                              className="flex items-center gap-1 px-2 py-1.5 sm:px-3"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => expandRow(row.key)}
+                                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left text-sm hover:bg-slate-100"
+                                aria-label={`Edit ${taskLabel}`}
+                              >
+                                <ChevronRight
+                                  size={16}
+                                  className="shrink-0 text-slate-400"
+                                  aria-hidden
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  <span className="text-slate-500">{categoryName}</span>
+                                  <span className="mx-1 text-slate-300" aria-hidden>
+                                    ·
+                                  </span>
+                                  <span className="font-medium text-slate-800">
+                                    {task?.name ?? "Task"}
+                                  </span>
+                                </span>
+                                <span className="hidden shrink-0 text-slate-500 sm:inline">
+                                  {row.startTime}–{row.finishTime}
+                                </span>
+                                <span className="shrink-0 font-semibold text-slate-700">
+                                  {formatHours(hours)}
+                                </span>
+                                {hasComment && (
+                                  <MessageSquare
+                                    size={14}
+                                    className="shrink-0 text-slate-400"
+                                    aria-label="Has note"
+                                  />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeRow(row.key)}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                aria-label="Remove row"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={row.key}
+                            className={cn(
+                              compact && "bg-slate-50/60",
+                              compact ? "px-2 py-1.5 sm:px-3" : "p-3"
+                            )}
                           >
-                            {categories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </Select>
-                          <Select
-                            value={row.taskId}
-                            onChange={(e) =>
-                              updateRow(row.key, { taskId: e.target.value })
-                            }
-                            aria-label="Task"
-                          >
-                            {(tasksByCategory[row.categoryId] ?? []).map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name} ({t.reference})
-                              </option>
-                            ))}
-                          </Select>
-                          <TimeRangeInput
-                            startTime={row.startTime}
-                            finishTime={row.finishTime}
-                            onStartChange={(startTime) =>
-                              updateRow(row.key, { startTime })
-                            }
-                            onFinishChange={(finishTime) =>
-                              updateRow(row.key, { finishTime })
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeRow(row.key)}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
-                            aria-label="Remove row"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      ))}
+                            {complete && (
+                              <div className="mb-1.5 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => collapseRow(row.key)}
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                                >
+                                  <ChevronDown size={14} aria-hidden />
+                                  Done
+                                </button>
+                              </div>
+                            )}
+                            <div
+                              className={cn(
+                                "grid grid-cols-1 sm:items-center",
+                                compact
+                                  ? "gap-1 sm:grid-cols-[1fr_1fr_minmax(0,auto)_32px]"
+                                  : "gap-2 sm:grid-cols-[1fr_1fr_1.25fr_minmax(0,auto)_40px]"
+                              )}
+                            >
+                              <Select
+                                value={row.categoryId}
+                                onChange={(e) =>
+                                  updateRow(row.key, { categoryId: e.target.value })
+                                }
+                                aria-label="Category"
+                                className={compact ? "px-2 py-1 text-sm" : undefined}
+                              >
+                                {categories.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                value={row.taskId}
+                                onChange={(e) =>
+                                  updateRow(row.key, { taskId: e.target.value })
+                                }
+                                aria-label="Task"
+                                className={compact ? "px-2 py-1 text-sm" : undefined}
+                              >
+                                {(tasksByCategory[row.categoryId] ?? []).map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name} ({t.reference})
+                                  </option>
+                                ))}
+                              </Select>
+                              {!compact && (
+                                <Input
+                                  value={row.comment}
+                                  onChange={(e) =>
+                                    updateRow(row.key, { comment: e.target.value })
+                                  }
+                                  placeholder="Brief description (optional)"
+                                  maxLength={200}
+                                  aria-label="Comment"
+                                />
+                              )}
+                              <TimeRangeInput
+                                compact={compact}
+                                startTime={row.startTime}
+                                finishTime={row.finishTime}
+                                onStartChange={(startTime) =>
+                                  updateRow(row.key, { startTime })
+                                }
+                                onFinishChange={(finishTime) =>
+                                  updateRow(row.key, { finishTime })
+                                }
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeRow(row.key)}
+                                className={cn(
+                                  "flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600",
+                                  compact ? "h-8 w-8" : "h-10 w-10"
+                                )}
+                                aria-label="Remove row"
+                              >
+                                <Trash2 size={compact ? 16 : 18} />
+                              </button>
+                            </div>
+                            {compact && (
+                              <div className="mt-1">
+                                <Input
+                                  value={row.comment}
+                                  onChange={(e) =>
+                                    updateRow(row.key, { comment: e.target.value })
+                                  }
+                                  placeholder="Brief description (optional)"
+                                  maxLength={200}
+                                  aria-label="Comment"
+                                  className="px-2 py-1 text-sm"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         ))}

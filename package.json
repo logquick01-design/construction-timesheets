@@ -6,15 +6,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 3000",
-    "build": "next build",
+    "dev": "npm run prisma:sync && next dev -H 127.0.0.1 -p 3000",
+    "build": "npm run prisma:sync && next build",
     "start": "next start",
     "start:production": "bash scripts/start-production.sh",
     "lint": "next lint",
-    "db:push": "prisma db push",
+    "prisma:sync": "prisma generate && node scripts/write-prisma-fingerprint.mjs",
+    "db:push": "prisma db push && npm run prisma:sync",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma db push && tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "db:setup": "npm run db:push && tsx prisma/seed.ts",
+    "postinstall": "npm run prisma:sync"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

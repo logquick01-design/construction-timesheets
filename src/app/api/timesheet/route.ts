@@ -59,6 +59,7 @@ const rowSchema = z.object({
   workerId: z.string(),
   taskId: z.string(),
   hours: z.number().positive().max(24),
+  comment: z.string().max(200).nullish(),
 });
 
 const saveSchema = z.object({
@@ -97,22 +98,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Worker not assigned to site" }, { status: 400 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.timesheetEntry.deleteMany({
-      where: { siteId, date: { gte: dayStart, lte: dayEnd } },
-    });
-    if (rows.length > 0) {
-      await tx.timesheetEntry.createMany({
-        data: rows.map((r) => ({
-          workerId: r.workerId,
-          siteId,
-          taskId: r.taskId,
-          date: dayStart,
-          hours: r.hours,
-        })),
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.timesheetEntry.deleteMany({
+        where: { siteId, date: { gte: dayStart, lte: dayEnd } },
       });
-    }
-  });
+      if (rows.length > 0) {
+        await tx.timesheetEntry.createMany({
+          data: rows.map((r) => {
+            const comment = r.comment?.trim();
+            return {
+              workerId: r.workerId,
+              siteId,
+              taskId: r.taskId,
+              date: dayStart,
+              hours: r.hours,
+              ...(comment ? { comment } : {}),
+            };
+          }),
+        });
+      }
+    });
 
-  return NextResponse.json({ ok: true, count: rows.length });
+    return NextResponse.json({ ok: true, count: rows.length });
+  } catch (err) {
+    console.error("Timesheet save failed:", err);
+    const message =
+      err instanceof Error && err.message.includes("Unknown argument `comment`")
+        ? "Database schema is out of date — restart the app after running npm run db:push"
+        : "Save failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

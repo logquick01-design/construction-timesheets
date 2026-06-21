@@ -126,6 +126,7 @@ model TimesheetEntry {
   taskId    String
   date      DateTime
   hours     Float
+  comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

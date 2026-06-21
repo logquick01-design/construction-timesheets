@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   });
 
   const header =
-    "Worker Name,Site,Category,Task,Cost Code Ref,Date,Hours";
+    "Worker Name,Site,Category,Task,Cost Code Ref,Date,Hours,Comment";
   const rows = entries.map((e) => {
     const date = formatDate(e.date);
     const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
@@ -58,6 +58,7 @@ export async function GET(request: Request) {
       esc(e.task.reference),
       date,
       e.hours.toString(),
+      esc(e.comment ?? ""),
     ].join(",");
   });
 

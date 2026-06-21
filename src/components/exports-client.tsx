@@ -69,7 +69,7 @@ export function ExportsClient({
       <Card>
         <h2 className="mb-1 font-semibold text-slate-850">Payroll CSV</h2>
         <p className="mb-4 text-sm text-slate-500">
-          Worker, site, category, task, cost code ref, date, hours
+          Worker, site, category, task, cost code ref, date, hours, comment
         </p>
         <div className="space-y-3">
           <div>

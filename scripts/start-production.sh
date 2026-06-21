@@ -6,6 +6,7 @@ cd "$ROOT"
 
 echo "Applying database schema..."
 npx prisma db push --skip-generate
+npm run prisma:sync
 
 USER_COUNT="$(node <<'NODE'
 const { PrismaClient } = require("@prisma/client");
