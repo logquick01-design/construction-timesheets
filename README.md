@@ -68,21 +68,36 @@ git push -u origin main
 
 1. Go to [railway.app](https://railway.app) and sign in with GitHub.
 2. **New Project** → **Deploy from GitHub repo** → select this repository.
-3. Open the service → **Variables** and add:
+3. **Add persistent storage** (required — data is lost on redeploy without this):
+
+   Volumes are **not** under Settings. Use one of these:
+
+   - **Option A:** Click empty space on the project canvas (the diagram view with your service box) → **right-click** → **Add Volume** (or **Attach Volume** if right-clicking your service)
+   - **Option B:** Press **⌘K** (Mac) or **Ctrl+K** (Windows) → type **Volume** → **Add Volume**
+
+   When prompted:
+   - Select your app service (the one deployed from GitHub)
+   - Mount path: `/data`
+   - Size: 1 GB is enough for testing
+
+4. Open the service → **Variables** and add:
 
    | Variable | Value |
    | -------- | ----- |
-   | `DATABASE_URL` | `file:/data/prod.db` |
-   | `AUTH_SECRET` | Generate with: `openssl rand -base64 32` |
+   | `AUTH_SECRET` | Generate with: `openssl rand -base64 32` (**required**) |
    | `NODE_ENV` | `production` |
 
-4. **Settings** → **Volumes** → **Add Volume**:
-   - Mount path: `/data`
-   - Size: 1 GB (enough for testing)
+   `DATABASE_URL` is **not required** — the startup script detects the Railway volume and uses `file:/data/prod.db` automatically. Do **not** set `DATABASE_URL` to `file:./dev.db` on Railway.
 
-5. Redeploy after adding the volume (Railway menu → **Redeploy**).
+5. **Check the start command** (Service → **Settings** → **Deploy**):
+   - Should be `bash scripts/start-production.sh` (or leave blank to use `railway.toml`)
+   - If it says `npm start` or `next start` only, clear it and redeploy so the repo config is used
 
-On first boot, the app applies the schema and seeds demo data automatically.
+6. Redeploy after adding the volume (Railway menu → **Redeploy**).
+
+On first boot, the app applies the schema and seeds demo data automatically. Data persists across redeploys as long as the volume is attached.
+
+**Data still resetting?** Check deploy logs for `WARNING: Running on Railway without a persistent volume` — that means no volume is attached. Add one from the project canvas (right-click or ⌘K → Volume), not from Settings.
 
 ### 3. Share the link
 
