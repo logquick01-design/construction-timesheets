@@ -50,8 +50,6 @@ type Row = {
   finishTime: string;
 };
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
-
 function buildPayload(rows: Row[]) {
   return rows
     .map((r) => ({
@@ -91,7 +89,6 @@ export function TimesheetClient({
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState("");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const skipAutoSaveRef = useRef(true);
@@ -143,7 +140,7 @@ export function TimesheetClient({
     }));
     setRows(initial);
     setExpandedRows(new Set());
-    setSaveStatus("idle");
+    setSaveError("");
   }, [siteId, date]);
 
   useEffect(() => {
@@ -241,7 +238,6 @@ export function TimesheetClient({
     const version = ++saveVersionRef.current;
     const payload = buildPayload(rowsRef.current);
 
-    setSaveStatus("saving");
     setSaveError("");
 
     try {
@@ -256,22 +252,20 @@ export function TimesheetClient({
 
       if (!res.ok) {
         setSaveError(data.error ?? "Save failed");
-        setSaveStatus("error");
         return;
       }
 
-      setSaveStatus("saved");
+      setSaveError("");
     } catch {
       if (version === saveVersionRef.current) {
         setSaveError("Network error");
-        setSaveStatus("error");
       }
     }
   }, [siteId, date]);
 
   const enqueueSave = useCallback(() => {
     saveQueueRef.current = saveQueueRef.current.then(runSave).catch(() => {
-      // runSave already updates saveStatus on failure
+      // runSave already updates saveError on failure
     });
   }, [runSave]);
 
@@ -292,12 +286,6 @@ export function TimesheetClient({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [rows, siteId, date, loading, enqueueSave]);
-
-  useEffect(() => {
-    if (saveStatus !== "saved") return;
-    const timer = setTimeout(() => setSaveStatus("idle"), 2000);
-    return () => clearTimeout(timer);
-  }, [saveStatus]);
 
   const rowsByWorker = useMemo(() => {
     const map: Record<string, Row[]> = {};
@@ -362,21 +350,9 @@ export function TimesheetClient({
               </Select>
             </div>
           )}
-          {siteId && !loading && (
-            <p
-              className={`ml-auto text-sm ${
-                saveStatus === "error"
-                  ? "text-red-600"
-                  : saveStatus === "saved"
-                    ? "text-green-700"
-                    : "text-slate-500"
-              }`}
-              aria-live="polite"
-            >
-              {saveStatus === "saving" && "Saving…"}
-              {saveStatus === "saved" && "Saved"}
-              {saveStatus === "error" && (saveError || "Couldn't save — try again")}
-              {saveStatus === "idle" && "Changes save automatically"}
+          {siteId && !loading && saveError && (
+            <p className="ml-auto text-sm text-red-600" aria-live="polite">
+              {saveError || "Couldn't save — try again"}
             </p>
           )}
         </div>
