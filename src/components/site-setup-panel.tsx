@@ -1,18 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Input, Label, Select } from "./ui";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button, Card, Input, Label } from "./ui";
 
-type Tab = "companies" | "workers" | "categories" | "tasks";
+type Tab = "companies" | "categories";
 
 export function SiteSetupPanel({ siteId }: { siteId: string }) {
   const [tab, setTab] = useState<Tab>("companies");
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "companies", label: "Companies" },
-    { id: "workers", label: "Workers" },
     { id: "categories", label: "Categories" },
-    { id: "tasks", label: "Tasks" },
   ];
 
   return (
@@ -34,97 +33,12 @@ export function SiteSetupPanel({ siteId }: { siteId: string }) {
         ))}
       </div>
       {tab === "companies" && <CompaniesAdmin siteId={siteId} />}
-      {tab === "workers" && <WorkersAdmin siteId={siteId} />}
       {tab === "categories" && <CategoriesAdmin siteId={siteId} />}
-      {tab === "tasks" && <TasksAdmin siteId={siteId} />}
     </div>
   );
 }
 
 type Company = { id: string; name: string; active: boolean };
-
-function CompaniesAdmin({ siteId }: { siteId: string }) {
-  const [items, setItems] = useState<Company[]>([]);
-  const [form, setForm] = useState({ id: "", name: "", active: true });
-  const [error, setError] = useState("");
-
-  const load = useCallback(() => {
-    fetch(`/api/admin/companies?siteId=${siteId}`)
-      .then((r) => r.json())
-      .then(setItems);
-  }, [siteId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    const res = await fetch("/api/admin/companies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, siteId }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Failed to save company.");
-      return;
-    }
-    setForm({ id: "", name: "", active: true });
-    load();
-  }
-
-  return (
-    <AdminCrud
-      title="Subcontractor companies"
-      description="Companies that supply workers to this site."
-      form={
-        <form onSubmit={save} className="flex flex-wrap gap-2">
-          <Input
-            className="max-w-xs"
-            placeholder="Company name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.active}
-              onChange={(e) => setForm({ ...form, active: e.target.checked })}
-            />
-            Active
-          </label>
-          <Button type="submit">{form.id ? "Update" : "Add"}</Button>
-          {form.id && (
-            <Button type="button" variant="ghost" onClick={() => setForm({ id: "", name: "", active: true })}>
-              Cancel
-            </Button>
-          )}
-          {error && <p className="w-full text-sm text-red-600">{error}</p>}
-        </form>
-      }
-      list={
-        items.length === 0 ? (
-          <li className="py-2 text-sm text-slate-500">No companies yet.</li>
-        ) : (
-          items.map((c) => (
-            <li key={c.id} className="flex justify-between py-2">
-              <span>
-                {c.name}
-                {!c.active && <span className="text-red-500"> (archived)</span>}
-              </span>
-              <Button size="sm" variant="secondary" onClick={() => setForm({ id: c.id, name: c.name, active: c.active })}>
-                Edit
-              </Button>
-            </li>
-          ))
-        )
-      }
-    />
-  );
-}
 
 type WorkerItem = {
   id: string;
@@ -135,26 +49,24 @@ type WorkerItem = {
   company: { id: string; name: string } | null;
 };
 
-function WorkersAdmin({ siteId }: { siteId: string }) {
-  const [items, setItems] = useState<WorkerItem[]>([]);
+function CompaniesAdmin({ siteId }: { siteId: string }) {
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [form, setForm] = useState({
-    id: "",
-    name: "",
-    trade: "",
-    companyId: "",
-    active: true,
-  });
-  const [error, setError] = useState("");
+  const [workers, setWorkers] = useState<WorkerItem[]>([]);
+  const [companyForm, setCompanyForm] = useState({ id: "", name: "", active: true });
+  const [companyError, setCompanyError] = useState("");
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [workerForms, setWorkerForms] = useState<
+    Record<string, { id: string; name: string; trade: string; active: boolean }>
+  >({});
+  const [workerErrors, setWorkerErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     Promise.all([
-      fetch(`/api/admin/workers?siteId=${siteId}`).then((r) => r.json()),
       fetch(`/api/admin/companies?siteId=${siteId}`).then((r) => r.json()),
-    ]).then(([w, c]) => {
-      setItems(w);
+      fetch(`/api/admin/workers?siteId=${siteId}`).then((r) => r.json()),
+    ]).then(([c, w]) => {
       setCompanies(c);
-      setForm((f) => (f.id || f.companyId || !c[0] ? f : { ...f, companyId: c[0].id }));
+      setWorkers(w);
     });
   }, [siteId]);
 
@@ -163,268 +75,475 @@ function WorkersAdmin({ siteId }: { siteId: string }) {
   }, [load]);
 
   const workersByCompany = useMemo(() => {
-    const map = new Map<string, { name: string; rows: WorkerItem[] }>();
-    for (const w of items) {
-      const key = w.company?.id ?? "unassigned";
-      const name = w.company?.name ?? "Unassigned";
-      if (!map.has(key)) map.set(key, { name, rows: [] });
-      map.get(key)!.rows.push(w);
+    const map = new Map<string, WorkerItem[]>();
+    for (const w of workers) {
+      const key = w.companyId ?? w.company?.id ?? "unassigned";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(w);
     }
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+    return map;
+  }, [workers]);
 
-  function reset() {
-    setError("");
-    setForm({ id: "", name: "", trade: "", companyId: companies[0]?.id ?? "", active: true });
+  function toggleCompany(companyId: string) {
+    setExpandedCompanies((prev) => {
+      const next = new Set(prev);
+      if (next.has(companyId)) next.delete(companyId);
+      else next.add(companyId);
+      return next;
+    });
   }
 
-  async function save(e: React.FormEvent) {
+  function getWorkerForm(companyId: string) {
+    return workerForms[companyId] ?? { id: "", name: "", trade: "", active: true };
+  }
+
+  function setWorkerForm(companyId: string, form: { id: string; name: string; trade: string; active: boolean }) {
+    setWorkerForms((prev) => ({ ...prev, [companyId]: form }));
+  }
+
+  function resetWorkerForm(companyId: string) {
+    setWorkerForms((prev) => {
+      const next = { ...prev };
+      delete next[companyId];
+      return next;
+    });
+    setWorkerErrors((prev) => {
+      const next = { ...prev };
+      delete next[companyId];
+      return next;
+    });
+  }
+
+  async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!form.companyId) {
-      setError("Please select a company.");
+    setCompanyError("");
+    const res = await fetch("/api/admin/companies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...companyForm, siteId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setCompanyError(data.error ?? "Failed to save company.");
       return;
     }
+    setCompanyForm({ id: "", name: "", active: true });
+    load();
+  }
+
+  async function saveWorker(e: React.FormEvent, companyId: string) {
+    e.preventDefault();
+    const form = getWorkerForm(companyId);
+    setWorkerErrors((prev) => ({ ...prev, [companyId]: "" }));
     const res = await fetch("/api/admin/workers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, siteId }),
+      body: JSON.stringify({ ...form, companyId, siteId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.error ?? "Failed to save worker.");
+      setWorkerErrors((prev) => ({ ...prev, [companyId]: data.error ?? "Failed to save worker." }));
       return;
     }
-    reset();
+    resetWorkerForm(companyId);
     load();
   }
 
   return (
     <AdminCrud
-      title="Workers"
-      description="The crew working on this site, grouped by company."
+      title="Subcontractor companies"
+      description="Add companies, then expand each one to manage its workers."
       form={
-        <form onSubmit={save} className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            <Input placeholder="Trade / role" value={form.trade} onChange={(e) => setForm({ ...form, trade: e.target.value })} required />
-            <div>
-              <Label>Company</Label>
-              <Select value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })} required>
-                <option value="">Select company…</option>
-                {companies
-                  .filter((c) => c.active || c.id === form.companyId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {!c.active ? " (archived)" : ""}
-                    </option>
-                  ))}
-              </Select>
-            </div>
-          </div>
-          {companies.length === 0 && (
-            <p className="text-sm text-amber-600">Add a company first before adding workers.</p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-              Active
-            </label>
-            <Button type="submit" disabled={companies.length === 0}>
-              {form.id ? "Update" : "Add"}
+        <form onSubmit={saveCompany} className="flex flex-wrap gap-2">
+          <Input
+            className="max-w-xs"
+            placeholder="Company name"
+            value={companyForm.name}
+            onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+            required
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={companyForm.active}
+              onChange={(e) => setCompanyForm({ ...companyForm, active: e.target.checked })}
+            />
+            Active
+          </label>
+          <Button type="submit">{companyForm.id ? "Update" : "Add company"}</Button>
+          {companyForm.id && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCompanyForm({ id: "", name: "", active: true })}
+            >
+              Cancel
             </Button>
-            {form.id && (
-              <Button type="button" variant="ghost" onClick={reset}>
-                Cancel
-              </Button>
-            )}
-          </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          )}
+          {companyError && <p className="w-full text-sm text-red-600">{companyError}</p>}
         </form>
       }
       list={
-        workersByCompany.length === 0 ? (
-          <li className="py-2 text-sm text-slate-500">No workers yet.</li>
+        companies.length === 0 ? (
+          <li className="py-2 text-sm text-slate-500">No companies yet.</li>
         ) : (
-          workersByCompany.map((group) => (
-            <li key={group.name}>
-              <div className="bg-slate-100 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                {group.name}
-              </div>
-              <ul className="divide-y divide-slate-100">
-                {group.rows.map((w) => (
-                  <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2 pl-4">
-                    <span>
-                      {w.name} <span className="text-slate-500">({w.trade})</span>
-                      {!w.active && <span className="text-red-500"> (archived)</span>}
+          companies.map((c) => {
+            const expanded = expandedCompanies.has(c.id);
+            const companyWorkers = workersByCompany.get(c.id) ?? [];
+            const workerForm = getWorkerForm(c.id);
+
+            return (
+              <li key={c.id} className="py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleCompany(c.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? (
+                      <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden />
+                    ) : (
+                      <ChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
+                    )}
+                    <span className="font-medium text-slate-850">
+                      {c.name}
+                      {!c.active && <span className="text-red-500"> (archived)</span>}
                     </span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        setForm({
-                          id: w.id,
-                          name: w.name,
-                          trade: w.trade,
-                          companyId: w.companyId ?? w.company?.id ?? "",
-                          active: w.active,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))
+                    <span className="text-sm text-slate-500">
+                      ({companyWorkers.length} worker{companyWorkers.length === 1 ? "" : "s"})
+                    </span>
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setCompanyForm({ id: c.id, name: c.name, active: c.active })}
+                  >
+                    Edit
+                  </Button>
+                </div>
+
+                {expanded && (
+                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                    {companyWorkers.length === 0 ? (
+                      <p className="text-sm text-slate-500">No workers yet.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-200">
+                        {companyWorkers.map((w) => (
+                          <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                            <span>
+                              {w.name} <span className="text-slate-500">({w.trade})</span>
+                              {!w.active && <span className="text-red-500"> (archived)</span>}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                setWorkerForm(c.id, {
+                                  id: w.id,
+                                  name: w.name,
+                                  trade: w.trade,
+                                  active: w.active,
+                                })
+                              }
+                            >
+                              Edit
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <form onSubmit={(e) => saveWorker(e, c.id)} className="space-y-3 border-t border-slate-200 pt-4">
+                      <p className="text-sm font-medium text-slate-700">
+                        {workerForm.id ? "Edit worker" : "Add worker"}
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Input
+                          placeholder="Name"
+                          value={workerForm.name}
+                          onChange={(e) => setWorkerForm(c.id, { ...workerForm, name: e.target.value })}
+                          required
+                        />
+                        <Input
+                          placeholder="Trade / role"
+                          value={workerForm.trade}
+                          onChange={(e) => setWorkerForm(c.id, { ...workerForm, trade: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={workerForm.active}
+                            onChange={(e) => setWorkerForm(c.id, { ...workerForm, active: e.target.checked })}
+                          />
+                          Active
+                        </label>
+                        <Button type="submit">{workerForm.id ? "Update worker" : "Add worker"}</Button>
+                        {workerForm.id && (
+                          <Button type="button" variant="ghost" onClick={() => resetWorkerForm(c.id)}>
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
+                      {workerErrors[c.id] && <p className="text-sm text-red-600">{workerErrors[c.id]}</p>}
+                    </form>
+                  </div>
+                )}
+              </li>
+            );
+          })
         )
       }
     />
   );
 }
 
+type Category = { id: string; name: string; active: boolean };
+
+type TaskItem = {
+  id: string;
+  name: string;
+  reference: string;
+  active: boolean;
+  categoryId: string;
+  category: { name: string };
+};
+
 function CategoriesAdmin({ siteId }: { siteId: string }) {
-  const [items, setItems] = useState<{ id: string; name: string; active: boolean }[]>([]);
-  const [form, setForm] = useState({ id: "", name: "", active: true });
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [categoryForm, setCategoryForm] = useState({ id: "", name: "", active: true });
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [taskForms, setTaskForms] = useState<
+    Record<string, { id: string; name: string; reference: string; active: boolean }>
+  >({});
+  const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
-    fetch(`/api/admin/categories?siteId=${siteId}`)
-      .then((r) => r.json())
-      .then(setItems);
+    Promise.all([
+      fetch(`/api/admin/categories?siteId=${siteId}`).then((r) => r.json()),
+      fetch(`/api/admin/tasks?siteId=${siteId}`).then((r) => r.json()),
+    ]).then(([c, t]) => {
+      setCategories(c);
+      setTasks(t);
+    });
   }, [siteId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function save(e: React.FormEvent) {
+  const tasksByCategory = useMemo(() => {
+    const map = new Map<string, TaskItem[]>();
+    for (const t of tasks) {
+      if (!map.has(t.categoryId)) map.set(t.categoryId, []);
+      map.get(t.categoryId)!.push(t);
+    }
+    return map;
+  }, [tasks]);
+
+  function toggleCategory(categoryId: string) {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
+      return next;
+    });
+  }
+
+  function getTaskForm(categoryId: string) {
+    return taskForms[categoryId] ?? { id: "", name: "", reference: "", active: true };
+  }
+
+  function setTaskForm(
+    categoryId: string,
+    form: { id: string; name: string; reference: string; active: boolean }
+  ) {
+    setTaskForms((prev) => ({ ...prev, [categoryId]: form }));
+  }
+
+  function resetTaskForm(categoryId: string) {
+    setTaskForms((prev) => {
+      const next = { ...prev };
+      delete next[categoryId];
+      return next;
+    });
+    setTaskErrors((prev) => {
+      const next = { ...prev };
+      delete next[categoryId];
+      return next;
+    });
+  }
+
+  async function saveCategory(e: React.FormEvent) {
     e.preventDefault();
     await fetch("/api/admin/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, siteId }),
+      body: JSON.stringify({ ...categoryForm, siteId }),
     });
-    setForm({ id: "", name: "", active: true });
+    setCategoryForm({ id: "", name: "", active: true });
+    load();
+  }
+
+  async function saveTask(e: React.FormEvent, categoryId: string) {
+    e.preventDefault();
+    const form = getTaskForm(categoryId);
+    setTaskErrors((prev) => ({ ...prev, [categoryId]: "" }));
+    const res = await fetch("/api/admin/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form, categoryId, siteId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setTaskErrors((prev) => ({ ...prev, [categoryId]: data.error ?? "Failed to save task." }));
+      return;
+    }
+    resetTaskForm(categoryId);
     load();
   }
 
   return (
     <AdminCrud
       title="Cost code categories"
-      description="Top-level groupings for this site's cost codes."
+      description="Add categories, then expand each one to manage its tasks."
       form={
-        <form onSubmit={save} className="flex flex-wrap gap-2">
-          <Input className="max-w-xs" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Button type="submit">{form.id ? "Update" : "Add"}</Button>
-          {form.id && (
-            <Button type="button" variant="ghost" onClick={() => setForm({ id: "", name: "", active: true })}>
+        <form onSubmit={saveCategory} className="flex flex-wrap gap-2">
+          <Input
+            className="max-w-xs"
+            placeholder="Category name"
+            value={categoryForm.name}
+            onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+            required
+          />
+          <Button type="submit">{categoryForm.id ? "Update" : "Add category"}</Button>
+          {categoryForm.id && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCategoryForm({ id: "", name: "", active: true })}
+            >
               Cancel
             </Button>
           )}
         </form>
       }
       list={
-        items.length === 0 ? (
+        categories.length === 0 ? (
           <li className="py-2 text-sm text-slate-500">No categories yet.</li>
         ) : (
-          items.map((c) => (
-            <li key={c.id} className="flex justify-between py-2">
-              <span>
-                {c.name}
-                {!c.active && <span className="text-red-500"> (archived)</span>}
-              </span>
-              <Button size="sm" variant="secondary" onClick={() => setForm({ id: c.id, name: c.name, active: c.active })}>
-                Edit
-              </Button>
-            </li>
-          ))
-        )
-      }
-    />
-  );
-}
+          categories.map((c) => {
+            const expanded = expandedCategories.has(c.id);
+            const categoryTasks = tasksByCategory.get(c.id) ?? [];
+            const taskForm = getTaskForm(c.id);
 
-function TasksAdmin({ siteId }: { siteId: string }) {
-  const [items, setItems] = useState<
-    { id: string; name: string; reference: string; active: boolean; category: { name: string }; categoryId: string }[]
-  >([]);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState({ id: "", name: "", reference: "", categoryId: "", active: true });
+            return (
+              <li key={c.id} className="py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(c.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? (
+                      <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden />
+                    ) : (
+                      <ChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
+                    )}
+                    <span className="font-medium text-slate-850">
+                      {c.name}
+                      {!c.active && <span className="text-red-500"> (archived)</span>}
+                    </span>
+                    <span className="text-sm text-slate-500">
+                      ({categoryTasks.length} task{categoryTasks.length === 1 ? "" : "s"})
+                    </span>
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setCategoryForm({ id: c.id, name: c.name, active: c.active })}
+                  >
+                    Edit
+                  </Button>
+                </div>
 
-  const load = useCallback(() => {
-    Promise.all([
-      fetch(`/api/admin/tasks?siteId=${siteId}`).then((r) => r.json()),
-      fetch(`/api/admin/categories?siteId=${siteId}`).then((r) => r.json()),
-    ]).then(([t, c]) => {
-      setItems(t);
-      setCategories(c);
-      setForm((f) => (f.id || f.categoryId || !c[0] ? f : { ...f, categoryId: c[0].id }));
-    });
-  }, [siteId]);
+                {expanded && (
+                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                    {categoryTasks.length === 0 ? (
+                      <p className="text-sm text-slate-500">No tasks yet.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-200">
+                        {categoryTasks.map((t) => (
+                          <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                            <span>
+                              {t.name} ({t.reference})
+                              {!t.active && <span className="text-red-500"> (archived)</span>}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                setTaskForm(c.id, {
+                                  id: t.id,
+                                  name: t.name,
+                                  reference: t.reference,
+                                  active: t.active,
+                                })
+                              }
+                            >
+                              Edit
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.categoryId) return;
-    await fetch("/api/admin/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, siteId }),
-    });
-    setForm({ id: "", name: "", reference: "", categoryId: categories[0]?.id ?? "", active: true });
-    load();
-  }
-
-  return (
-    <AdminCrud
-      title="Tasks / cost codes"
-      description="Individual cost codes workers log time against."
-      form={
-        <form onSubmit={save} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Input placeholder="Task name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Input placeholder="Ref #" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required />
-          <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required>
-            <option value="">Select category…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Button type="submit" disabled={categories.length === 0}>
-            {form.id ? "Update" : "Add"}
-          </Button>
-          {categories.length === 0 && (
-            <p className="text-sm text-amber-600 sm:col-span-2 lg:col-span-4">
-              Add a category first before adding tasks.
-            </p>
-          )}
-        </form>
-      }
-      list={
-        items.length === 0 ? (
-          <li className="py-2 text-sm text-slate-500">No tasks yet.</li>
-        ) : (
-          items.map((t) => (
-            <li key={t.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
-              <span>
-                {t.name} ({t.reference}) — {t.category.name}
-                {!t.active && <span className="text-red-500"> (archived)</span>}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setForm({ id: t.id, name: t.name, reference: t.reference, categoryId: t.categoryId, active: t.active })}
-              >
-                Edit
-              </Button>
-            </li>
-          ))
+                    <form onSubmit={(e) => saveTask(e, c.id)} className="space-y-3 border-t border-slate-200 pt-4">
+                      <p className="text-sm font-medium text-slate-700">
+                        {taskForm.id ? "Edit task" : "Add task"}
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Input
+                          placeholder="Task name"
+                          value={taskForm.name}
+                          onChange={(e) => setTaskForm(c.id, { ...taskForm, name: e.target.value })}
+                          required
+                        />
+                        <Input
+                          placeholder="Ref #"
+                          value={taskForm.reference}
+                          onChange={(e) => setTaskForm(c.id, { ...taskForm, reference: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={taskForm.active}
+                            onChange={(e) => setTaskForm(c.id, { ...taskForm, active: e.target.checked })}
+                          />
+                          Active
+                        </label>
+                        <Button type="submit">{taskForm.id ? "Update task" : "Add task"}</Button>
+                        {taskForm.id && (
+                          <Button type="button" variant="ghost" onClick={() => resetTaskForm(c.id)}>
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
+                      {taskErrors[c.id] && <p className="text-sm text-red-600">{taskErrors[c.id]}</p>}
+                    </form>
+                  </div>
+                )}
+              </li>
+            );
+          })
         )
       }
     />
