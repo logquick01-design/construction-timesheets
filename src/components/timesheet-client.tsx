@@ -10,6 +10,8 @@ import {
   calcHoursFromTimes,
   finishTimeFromHours,
   formatHours,
+  minutesToTime,
+  timeToMinutes,
 } from "@/lib/time-utils";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@prisma/client";
@@ -68,6 +70,16 @@ function buildPayload(rows: Row[]) {
 function isRowComplete(row: Row): boolean {
   const hours = calcHoursFromTimes(row.startTime, row.finishTime);
   return Boolean(row.taskId && hours != null && hours > 0);
+}
+
+function suggestedStartForWorker(rows: Row[], workerId: string): string {
+  let latestFinish = -1;
+  for (const r of rows) {
+    if (r.workerId !== workerId || !isRowComplete(r)) continue;
+    const finishM = timeToMinutes(r.finishTime);
+    if (finishM > latestFinish) latestFinish = finishM;
+  }
+  return latestFinish >= 0 ? minutesToTime(latestFinish) : DEFAULT_START_TIME;
 }
 
 export function TimesheetClient({
@@ -129,15 +141,21 @@ export function TimesheetClient({
     }
     setWorkers(data.workers);
     setCategories(data.categories);
-    const initial: Row[] = (data.entries as Entry[]).map((e, i) => ({
-      key: `existing-${i}`,
-      workerId: e.workerId,
-      categoryId: e.task.categoryId,
-      taskId: e.taskId,
-      comment: e.comment ?? "",
-      startTime: DEFAULT_START_TIME,
-      finishTime: finishTimeFromHours(DEFAULT_START_TIME, e.hours),
-    }));
+    const nextStartByWorker = new Map<string, string>();
+    const initial: Row[] = (data.entries as Entry[]).map((e, i) => {
+      const startTime = nextStartByWorker.get(e.workerId) ?? DEFAULT_START_TIME;
+      const finishTime = finishTimeFromHours(startTime, e.hours);
+      nextStartByWorker.set(e.workerId, finishTime);
+      return {
+        key: `existing-${i}`,
+        workerId: e.workerId,
+        categoryId: e.task.categoryId,
+        taskId: e.taskId,
+        comment: e.comment ?? "",
+        startTime,
+        finishTime,
+      };
+    });
     setRows(initial);
     setExpandedRows(new Set());
     setSaveError("");
@@ -171,18 +189,21 @@ export function TimesheetClient({
     const firstCat = categories[0];
     const firstTask = firstCat?.tasks[0];
     const key = `new-${Date.now()}-${Math.random()}`;
-    setRows((prev) => [
-      ...prev,
-      {
-        key,
-        workerId,
-        categoryId: firstCat?.id ?? "",
-        taskId: firstTask?.id ?? "",
-        comment: "",
-        startTime: DEFAULT_START_TIME,
-        finishTime: DEFAULT_FINISH_TIME,
-      },
-    ]);
+    setRows((prev) => {
+      const startTime = suggestedStartForWorker(prev, workerId);
+      return [
+        ...prev,
+        {
+          key,
+          workerId,
+          categoryId: firstCat?.id ?? "",
+          taskId: firstTask?.id ?? "",
+          comment: "",
+          startTime,
+          finishTime: DEFAULT_FINISH_TIME,
+        },
+      ];
+    });
     setExpandedRows((prev) => {
       const next = new Set(prev);
       for (const r of rowsRef.current) {
