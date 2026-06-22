@@ -11,9 +11,9 @@ export function Button({
   size?: "sm" | "md" | "lg";
 }) {
   const variants = {
-    primary: "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
-    secondary: "bg-slate-200 text-slate-800 hover:bg-slate-300",
-    ghost: "bg-transparent text-slate-700 hover:bg-slate-200",
+    primary: "bg-accent text-black hover:bg-accent-hover",
+    secondary: "bg-fill text-ink hover:bg-fill-hover",
+    ghost: "bg-transparent text-ink hover:bg-fill-hover",
     danger: "bg-red-600 text-white hover:bg-red-700",
   };
   const sizes = {
@@ -38,7 +38,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30",
+        "w-full rounded-lg border border-border bg-surface px-3 py-2 text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
         className
       )}
       {...props}
@@ -50,7 +50,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   return (
     <select
       className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30",
+        "w-full rounded-lg border border-border bg-surface px-3 py-2 text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
         className
       )}
       {...props}
@@ -68,7 +68,7 @@ export function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("rounded-xl border border-slate-200 bg-white p-4 shadow-sm", className)}>
+    <div className={cn("rounded-xl border border-border bg-surface p-4 shadow-sm", className)}>
       {children}
     </div>
   );
@@ -76,8 +76,45 @@ export function Card({
 
 export function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium text-slate-600">
+    <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium text-muted">
       {children}
+    </label>
+  );
+}
+
+export function Toggle({
+  id,
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-border bg-fill/40 px-3 py-3"
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        {description && <span className="mt-0.5 block text-sm text-muted">{description}</span>}
+      </span>
+      <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="peer sr-only"
+        />
+        <span className="absolute inset-0 rounded-full bg-border transition peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/30" />
+        <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+      </span>
     </label>
   );
 }
@@ -94,8 +131,8 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-850">{title}</h1>
-        {subtitle && <p className="mt-1 text-slate-600">{subtitle}</p>}
+        <h1 className="text-2xl font-semibold text-ink">{title}</h1>
+        {subtitle && <p className="mt-1 text-muted">{subtitle}</p>}
       </div>
       {action}
     </div>

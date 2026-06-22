@@ -42,7 +42,7 @@ export function TimeRangeInput({
           </option>
         ))}
       </Select>
-      <span className="text-slate-400" aria-hidden>
+      <span className="text-muted-light" aria-hidden>
         –
       </span>
       <Select
@@ -65,7 +65,7 @@ export function TimeRangeInput({
         className={cn(
           "min-w-[3.5rem] text-center font-semibold",
           compact ? "text-xs" : "min-w-[4.5rem] text-sm sm:text-base",
-          invalid ? "text-red-600" : "text-slate-700"
+          invalid ? "text-red-600" : "text-ink"
         )}
         aria-live="polite"
       >

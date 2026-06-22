@@ -60,7 +60,7 @@ export function LoginForm() {
           {loading ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-      <p className="mt-4 text-center text-xs text-slate-500">
+      <p className="mt-4 text-center text-xs text-muted">
         Demo: admin@example.com / manager@example.com / qs@example.com — password123
       </p>
     </Card>

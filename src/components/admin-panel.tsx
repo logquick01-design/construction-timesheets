@@ -25,8 +25,8 @@ export function AdminPanel() {
             onClick={() => setTab(t.id)}
             className={`rounded-lg px-4 py-2 text-sm font-medium ${
               tab === t.id
-                ? "bg-slate-850 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                ? "bg-black text-white"
+                : "bg-surface text-ink ring-1 ring-border hover:bg-fill"
             }`}
           >
             {t.label}
@@ -102,7 +102,7 @@ function SitesAdmin() {
           <div className="flex gap-2">
             <Link
               href={`/sites/${s.id}/dashboard`}
-              className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200"
+              className="rounded-lg bg-fill px-3 py-1.5 text-sm font-medium text-ink hover:bg-fill-hover"
             >
               Open site
             </Link>
@@ -199,10 +199,10 @@ function UsersAdmin() {
           </div>
           {form.role === UserRole.SITE_MANAGER && (
             <div>
-              <p className="mb-1 text-sm font-medium text-slate-600">Assigned sites</p>
+              <p className="mb-1 text-sm font-medium text-muted">Assigned sites</p>
               <div className="flex flex-wrap gap-2">
                 {sites.map((s) => (
-                  <label key={s.id} className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-sm">
+                  <label key={s.id} className="flex items-center gap-1 rounded-lg bg-fill px-3 py-1 text-sm">
                     <input
                       type="checkbox"
                       checked={form.siteIds.includes(s.id)}
@@ -289,10 +289,10 @@ function AdminCrud({
 }) {
   return (
     <Card>
-      <h2 className="font-semibold text-slate-850">{title}</h2>
-      {description && <p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>}
-      <div className="mb-6 border-b border-slate-100 pb-6">{form}</div>
-      <ul className="divide-y divide-slate-100">{list}</ul>
+      <h2 className="font-semibold text-ink">{title}</h2>
+      {description && <p className="mb-4 mt-1 text-sm text-muted">{description}</p>}
+      <div className="mb-6 border-b border-border-light pb-6">{form}</div>
+      <ul className="divide-y divide-border-light">{list}</ul>
     </Card>
   );
 }

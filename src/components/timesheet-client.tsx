@@ -340,7 +340,7 @@ export function TimesheetClient({
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-[var(--app-header-height)] z-30 -mx-4 border-b border-slate-200 bg-slate-100/95 px-4 py-3 backdrop-blur">
+      <div className="sticky top-[var(--app-header-height)] z-30 -mx-4 border-b border-border bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[140px] flex-1">
             <Label htmlFor="ts-date">Date</Label>
@@ -380,18 +380,18 @@ export function TimesheetClient({
         )}
       </div>
 
-      {loading && <p className="text-slate-500">Loading crew…</p>}
+      {loading && <p className="text-muted">Loading crew…</p>}
 
       {!loading && siteId && workers.length === 0 && (
-        <p className="text-slate-500">No workers assigned to this site.</p>
+        <p className="text-muted">No workers assigned to this site.</p>
       )}
 
       <div className="space-y-6">
         {workersByCompany.map((group) => (
           <section key={group.name}>
-            <h2 className="mb-2 rounded-lg bg-slate-850 px-3 py-2 text-sm font-semibold text-white sm:sticky sm:top-[calc(var(--app-header-height)+5.5rem)] sm:z-20">
+            <h2 className="mb-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white sm:sticky sm:top-[calc(var(--app-header-height)+5.5rem)] sm:z-20">
               {group.name}
-              <span className="ml-2 font-normal text-slate-300">
+              <span className="ml-2 font-normal text-accent-soft">
                 ({group.workers.length})
               </span>
             </h2>
@@ -403,17 +403,17 @@ export function TimesheetClient({
                 return (
                 <div
                   key={w.id}
-                  className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                  className="overflow-hidden rounded-xl border border-border bg-surface"
                 >
-                  <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2 bg-fill px-3 py-2">
                     <div className="min-w-0">
-                      <span className="font-semibold text-slate-850">{w.name}</span>
-                      <span className="ml-2 text-sm text-slate-500">{w.trade}</span>
+                      <span className="font-semibold text-ink">{w.name}</span>
+                      <span className="ml-2 text-sm text-muted">{w.trade}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {workerRows.length > 0 && (
                         <span
-                          className="text-sm font-semibold tabular-nums text-slate-700"
+                          className="text-sm font-semibold tabular-nums text-ink"
                           aria-label={`${workerTotal} hours logged today`}
                         >
                           {workerTotal > 0 ? formatHours(workerTotal) : "0 hrs"}
@@ -422,7 +422,7 @@ export function TimesheetClient({
                       <button
                         type="button"
                         onClick={() => addRow(w.id)}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-black hover:bg-accent-hover"
                         aria-label={`Add task for ${w.name}`}
                       >
                         <Plus size={22} />
@@ -431,9 +431,9 @@ export function TimesheetClient({
                   </div>
 
                   {(rowsByWorker[w.id] ?? []).length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-slate-400">Tap + to add hours</p>
+                    <p className="px-3 py-2 text-sm text-muted-light">Tap + to add hours</p>
                   ) : (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-border-light">
                       {(rowsByWorker[w.id] ?? []).map((row, rowIndex) => {
                         const compact = rowIndex > 0;
                         const complete = isRowComplete(row);
@@ -456,33 +456,33 @@ export function TimesheetClient({
                               <button
                                 type="button"
                                 onClick={() => expandRow(row.key)}
-                                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left text-sm hover:bg-slate-100"
+                                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left text-sm hover:bg-fill"
                                 aria-label={`Edit ${taskLabel}`}
                               >
                                 <ChevronRight
                                   size={16}
-                                  className="shrink-0 text-slate-400"
+                                  className="shrink-0 text-muted-light"
                                   aria-hidden
                                 />
                                 <span className="min-w-0 flex-1 truncate">
-                                  <span className="text-slate-500">{categoryName}</span>
-                                  <span className="mx-1 text-slate-300" aria-hidden>
+                                  <span className="text-muted">{categoryName}</span>
+                                  <span className="mx-1 text-accent-soft" aria-hidden>
                                     ·
                                   </span>
-                                  <span className="font-medium text-slate-800">
+                                  <span className="font-medium text-ink">
                                     {task?.name ?? "Task"}
                                   </span>
                                 </span>
-                                <span className="hidden shrink-0 text-slate-500 sm:inline">
+                                <span className="hidden shrink-0 text-muted sm:inline">
                                   {row.startTime}–{row.finishTime}
                                 </span>
-                                <span className="shrink-0 font-semibold text-slate-700">
+                                <span className="shrink-0 font-semibold text-ink">
                                   {formatHours(hours)}
                                 </span>
                                 {hasComment && (
                                   <MessageSquare
                                     size={14}
-                                    className="shrink-0 text-slate-400"
+                                    className="shrink-0 text-muted-light"
                                     aria-label="Has note"
                                   />
                                 )}
@@ -490,7 +490,7 @@ export function TimesheetClient({
                               <button
                                 type="button"
                                 onClick={() => removeRow(row.key)}
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-light hover:bg-red-50 hover:text-red-600"
                                 aria-label="Remove row"
                               >
                                 <Trash2 size={16} />
@@ -503,7 +503,7 @@ export function TimesheetClient({
                           <div
                             key={row.key}
                             className={cn(
-                              compact && "bg-slate-50/60",
+                              compact && "bg-fill/60",
                               compact ? "px-2 py-1.5 sm:px-3" : "p-3"
                             )}
                           >
@@ -512,7 +512,7 @@ export function TimesheetClient({
                                 <button
                                   type="button"
                                   onClick={() => collapseRow(row.key)}
-                                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-muted hover:bg-fill-hover hover:text-ink"
                                 >
                                   <ChevronDown size={14} aria-hidden />
                                   Done
@@ -586,7 +586,7 @@ export function TimesheetClient({
                                 type="button"
                                 onClick={() => removeRow(row.key)}
                                 className={cn(
-                                  "flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600",
+                                  "flex items-center justify-center rounded-lg text-muted-light hover:bg-red-50 hover:text-red-600",
                                   compact ? "h-8 w-8" : "h-10 w-10"
                                 )}
                                 aria-label="Remove row"

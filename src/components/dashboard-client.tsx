@@ -14,7 +14,7 @@ import {
 import { Card, Input, Label, Select } from "./ui";
 import type { UserRole } from "@prisma/client";
 
-const CHART_COLORS = ["#2a3544", "#c4783b", "#6b7c93", "#8b9aab"];
+const CHART_COLORS = ["#0a0a0a", "#c4783b", "#7a7268", "#a86432"];
 
 type Site = { id: string; name: string };
 
@@ -119,15 +119,15 @@ export function DashboardClient({
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
-              <p className="text-sm text-slate-500">Total hours (filtered)</p>
-              <p className="text-3xl font-bold text-slate-850">
+              <p className="text-sm text-muted">Total hours (filtered)</p>
+              <p className="text-3xl font-bold text-ink">
                 {data.grandTotal.toFixed(1)}
               </p>
             </Card>
             {sites.map((s) => (
               <Card key={s.id}>
-                <p className="text-sm text-slate-500">{s.name}</p>
-                <p className="text-2xl font-bold text-[var(--color-accent)]">
+                <p className="text-sm text-muted">{s.name}</p>
+                <p className="text-2xl font-bold text-accent">
                   {(data.totalBySite[s.id] ?? 0).toFixed(1)} hrs
                 </p>
               </Card>
@@ -135,13 +135,13 @@ export function DashboardClient({
           </div>
 
           <Card>
-            <h2 className="mb-4 font-semibold text-slate-850">
+            <h2 className="mb-4 font-semibold text-ink">
               {lockedSiteId ? "Hours by category" : "Hours by category per site"}
             </h2>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                   <XAxis dataKey="site" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip />
@@ -161,10 +161,10 @@ export function DashboardClient({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
-              <h2 className="mb-3 font-semibold text-slate-850">Hours per worker</h2>
-              <ul className="divide-y divide-slate-100">
+              <h2 className="mb-3 font-semibold text-ink">Hours per worker</h2>
+              <ul className="divide-y divide-border-light">
                 {data.workers.length === 0 && (
-                  <li className="py-2 text-sm text-slate-400">No data</li>
+                  <li className="py-2 text-sm text-muted-light">No data</li>
                 )}
                 {data.workers.map((w) => (
                   <li key={w.name} className="flex justify-between py-2 text-sm">
@@ -175,16 +175,16 @@ export function DashboardClient({
               </ul>
             </Card>
             <Card>
-              <h2 className="mb-3 font-semibold text-slate-850">Hours per task</h2>
-              <ul className="divide-y divide-slate-100">
+              <h2 className="mb-3 font-semibold text-ink">Hours per task</h2>
+              <ul className="divide-y divide-border-light">
                 {data.tasks.length === 0 && (
-                  <li className="py-2 text-sm text-slate-400">No data</li>
+                  <li className="py-2 text-sm text-muted-light">No data</li>
                 )}
                 {data.tasks.map((t) => (
                   <li key={t.reference} className="flex justify-between gap-2 py-2 text-sm">
                     <span>
                       {t.name}{" "}
-                      <span className="text-slate-400">({t.reference})</span>
+                      <span className="text-muted-light">({t.reference})</span>
                     </span>
                     <span className="shrink-0 font-semibold">{t.hours.toFixed(1)}</span>
                   </li>

@@ -15,7 +15,7 @@ export default async function SitesPage() {
       />
       {sites.length === 0 ? (
         <Card>
-          <p className="text-slate-500">
+          <p className="text-muted">
             You don&apos;t have access to any sites yet. Ask your company admin to assign you.
           </p>
         </Card>
@@ -23,17 +23,17 @@ export default async function SitesPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sites.map((s) => (
             <Link key={s.id} href={`/sites/${s.id}/dashboard`}>
-              <Card className="flex h-full items-center justify-between gap-3 transition hover:border-[var(--color-accent)] hover:shadow-md">
+              <Card className="flex h-full items-center justify-between gap-3 transition hover:border-accent hover:shadow-md">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-fill text-muted">
                     <Building2 size={20} />
                   </div>
                   <div>
-                    <p className="font-semibold text-slate-850">{s.name}</p>
-                    <p className="text-sm text-slate-500">{s.location}</p>
+                    <p className="font-semibold text-ink">{s.name}</p>
+                    <p className="text-sm text-muted">{s.location}</p>
                   </div>
                 </div>
-                <ArrowRight size={18} className="text-slate-300" />
+                <ArrowRight size={18} className="text-accent-soft" />
               </Card>
             </Link>
           ))}

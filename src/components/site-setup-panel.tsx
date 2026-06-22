@@ -10,8 +10,8 @@ export function SiteSetupPanel({ siteId }: { siteId: string }) {
   const [tab, setTab] = useState<Tab>("companies");
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "companies", label: "Companies" },
-    { id: "categories", label: "Categories" },
+    { id: "companies", label: "Companies / workers" },
+    { id: "categories", label: "Preset Cost codes" },
   ];
 
   return (
@@ -24,8 +24,8 @@ export function SiteSetupPanel({ siteId }: { siteId: string }) {
             onClick={() => setTab(t.id)}
             className={`rounded-lg px-4 py-2 text-sm font-medium ${
               tab === t.id
-                ? "bg-slate-850 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                ? "bg-black text-white"
+                : "bg-surface text-ink ring-1 ring-border hover:bg-fill"
             }`}
           >
             {t.label}
@@ -185,7 +185,7 @@ function CompaniesAdmin({ siteId }: { siteId: string }) {
       }
       list={
         companies.length === 0 ? (
-          <li className="py-2 text-sm text-slate-500">No companies yet.</li>
+          <li className="py-2 text-sm text-muted">No companies yet.</li>
         ) : (
           companies.map((c) => {
             const expanded = expandedCompanies.has(c.id);
@@ -202,15 +202,15 @@ function CompaniesAdmin({ siteId }: { siteId: string }) {
                     aria-expanded={expanded}
                   >
                     {expanded ? (
-                      <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden />
+                      <ChevronDown size={18} className="shrink-0 text-muted" aria-hidden />
                     ) : (
-                      <ChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
+                      <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
                     )}
-                    <span className="font-medium text-slate-850">
+                    <span className="font-medium text-ink">
                       {c.name}
                       {!c.active && <span className="text-red-500"> (archived)</span>}
                     </span>
-                    <span className="text-sm text-slate-500">
+                    <span className="text-sm text-muted">
                       ({companyWorkers.length} worker{companyWorkers.length === 1 ? "" : "s"})
                     </span>
                   </button>
@@ -224,15 +224,15 @@ function CompaniesAdmin({ siteId }: { siteId: string }) {
                 </div>
 
                 {expanded && (
-                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-border-light bg-fill p-4">
                     {companyWorkers.length === 0 ? (
-                      <p className="text-sm text-slate-500">No workers yet.</p>
+                      <p className="text-sm text-muted">No workers yet.</p>
                     ) : (
-                      <ul className="divide-y divide-slate-200">
+                      <ul className="divide-y divide-border">
                         {companyWorkers.map((w) => (
                           <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                             <span>
-                              {w.name} <span className="text-slate-500">({w.trade})</span>
+                              {w.name} <span className="text-muted">({w.trade})</span>
                               {!w.active && <span className="text-red-500"> (archived)</span>}
                             </span>
                             <Button
@@ -254,8 +254,8 @@ function CompaniesAdmin({ siteId }: { siteId: string }) {
                       </ul>
                     )}
 
-                    <form onSubmit={(e) => saveWorker(e, c.id)} className="space-y-3 border-t border-slate-200 pt-4">
-                      <p className="text-sm font-medium text-slate-700">
+                    <form onSubmit={(e) => saveWorker(e, c.id)} className="space-y-3 border-t border-border pt-4">
+                      <p className="text-sm font-medium text-ink">
                         {workerForm.id ? "Edit worker" : "Add worker"}
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -434,7 +434,7 @@ function CategoriesAdmin({ siteId }: { siteId: string }) {
       }
       list={
         categories.length === 0 ? (
-          <li className="py-2 text-sm text-slate-500">No categories yet.</li>
+          <li className="py-2 text-sm text-muted">No categories yet.</li>
         ) : (
           categories.map((c) => {
             const expanded = expandedCategories.has(c.id);
@@ -451,15 +451,15 @@ function CategoriesAdmin({ siteId }: { siteId: string }) {
                     aria-expanded={expanded}
                   >
                     {expanded ? (
-                      <ChevronDown size={18} className="shrink-0 text-slate-500" aria-hidden />
+                      <ChevronDown size={18} className="shrink-0 text-muted" aria-hidden />
                     ) : (
-                      <ChevronRight size={18} className="shrink-0 text-slate-500" aria-hidden />
+                      <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
                     )}
-                    <span className="font-medium text-slate-850">
+                    <span className="font-medium text-ink">
                       {c.name}
                       {!c.active && <span className="text-red-500"> (archived)</span>}
                     </span>
-                    <span className="text-sm text-slate-500">
+                    <span className="text-sm text-muted">
                       ({categoryTasks.length} task{categoryTasks.length === 1 ? "" : "s"})
                     </span>
                   </button>
@@ -473,11 +473,11 @@ function CategoriesAdmin({ siteId }: { siteId: string }) {
                 </div>
 
                 {expanded && (
-                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                  <div className="mt-3 ml-6 space-y-4 rounded-lg border border-border-light bg-fill p-4">
                     {categoryTasks.length === 0 ? (
-                      <p className="text-sm text-slate-500">No tasks yet.</p>
+                      <p className="text-sm text-muted">No tasks yet.</p>
                     ) : (
-                      <ul className="divide-y divide-slate-200">
+                      <ul className="divide-y divide-border">
                         {categoryTasks.map((t) => (
                           <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                             <span>
@@ -503,8 +503,8 @@ function CategoriesAdmin({ siteId }: { siteId: string }) {
                       </ul>
                     )}
 
-                    <form onSubmit={(e) => saveTask(e, c.id)} className="space-y-3 border-t border-slate-200 pt-4">
-                      <p className="text-sm font-medium text-slate-700">
+                    <form onSubmit={(e) => saveTask(e, c.id)} className="space-y-3 border-t border-border pt-4">
+                      <p className="text-sm font-medium text-ink">
                         {taskForm.id ? "Edit task" : "Add task"}
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -563,10 +563,10 @@ function AdminCrud({
 }) {
   return (
     <Card>
-      <h2 className="font-semibold text-slate-850">{title}</h2>
-      {description && <p className="mb-4 mt-1 text-sm text-slate-500">{description}</p>}
-      <div className="mb-6 border-b border-slate-100 pb-6">{form}</div>
-      <ul className="divide-y divide-slate-100">{list}</ul>
+      <h2 className="font-semibold text-ink">{title}</h2>
+      {description && <p className="mb-4 mt-1 text-sm text-muted">{description}</p>}
+      <div className="mb-6 border-b border-border-light pb-6">{form}</div>
+      <ul className="divide-y divide-border-light">{list}</ul>
     </Card>
   );
 }

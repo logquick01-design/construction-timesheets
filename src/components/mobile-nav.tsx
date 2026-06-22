@@ -46,12 +46,12 @@ export function MobileNav({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100"
+        className="flex h-12 w-12 items-center justify-center rounded-lg text-white hover:bg-white/10"
         aria-expanded={open}
         aria-controls="mobile-nav-panel"
         aria-label={open ? "Close menu" : "Open menu"}
       >
-        {open ? <X size={22} /> : <Menu size={22} />}
+        {open ? <X size={26} /> : <Menu size={26} />}
       </button>
 
       {open && (
@@ -64,19 +64,19 @@ export function MobileNav({
           />
           <nav
             id="mobile-nav-panel"
-            className="absolute right-0 z-50 mt-3 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+            className="absolute right-0 z-50 mt-3 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
           >
             <div className="max-h-[calc(100dvh-var(--app-header-height)-1.5rem)] overflow-y-auto p-2">
               {showOverview && (
                 <MobileNavLink href="/dashboard" label="Overview" pathname={pathname} onNavigate={close} />
               )}
 
-              <div className="my-1 border-t border-slate-100 pt-1">
-                <p className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <div className="my-1 border-t border-border-light pt-1">
+                <p className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-light">
                   Sites
                 </p>
                 {sites.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-slate-400">No sites available</p>
+                  <p className="px-3 py-2 text-sm text-muted-light">No sites available</p>
                 ) : (
                   sites.map((s) => (
                     <Link
@@ -84,21 +84,21 @@ export function MobileNav({
                       href={`/sites/${s.id}/dashboard`}
                       onClick={close}
                       className={cn(
-                        "flex min-h-11 items-start gap-2 rounded-lg px-3 py-2 hover:bg-slate-50",
-                        s.id === currentSiteId && "bg-slate-50"
+                        "flex min-h-11 items-start gap-2 rounded-lg px-3 py-2 hover:bg-fill",
+                        s.id === currentSiteId && "bg-fill"
                       )}
                     >
-                      <Building2 size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                      <Building2 size={16} className="mt-0.5 shrink-0 text-muted-light" />
                       <span className="min-w-0">
                         <span
                           className={cn(
                             "block truncate text-sm",
-                            s.id === currentSiteId ? "font-semibold text-slate-850" : "text-slate-700"
+                            s.id === currentSiteId ? "font-semibold text-ink" : "text-ink"
                           )}
                         >
                           {s.name}
                         </span>
-                        <span className="block truncate text-xs text-slate-400">{s.location}</span>
+                        <span className="block truncate text-xs text-muted-light">{s.location}</span>
                       </span>
                     </Link>
                   ))
@@ -106,7 +106,7 @@ export function MobileNav({
                 <Link
                   href="/sites"
                   onClick={close}
-                  className="flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-[var(--color-accent)] hover:bg-slate-50"
+                  className="flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-accent hover:bg-fill"
                 >
                   View all sites
                 </Link>
@@ -119,8 +119,8 @@ export function MobileNav({
                 <MobileNavLink href="/admin" label="Company Admin" pathname={pathname} onNavigate={close} />
               )}
 
-              <div className="mt-1 border-t border-slate-100 pt-2">
-                <p className="px-3 py-1 text-sm text-slate-500">{sessionName}</p>
+              <div className="mt-1 border-t border-border-light pt-2">
+                <p className="px-3 py-1 text-sm text-muted">{sessionName}</p>
                 <LogoutButton className="mt-1 w-full justify-center min-h-11" onLoggedOut={close} />
               </div>
             </div>
@@ -150,7 +150,7 @@ function MobileNavLink({
       onClick={onNavigate}
       className={cn(
         "flex min-h-11 items-center rounded-lg px-3 text-base font-medium",
-        active ? "bg-slate-100 text-slate-850" : "text-slate-700 hover:bg-slate-50"
+        active ? "bg-fill text-ink" : "text-ink hover:bg-fill"
       )}
     >
       {label}
