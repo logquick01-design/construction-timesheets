@@ -36,11 +36,27 @@ export function ExportsClient({
       });
   }, [isManagerOnly, lockedSiteId]);
 
-  function downloadCsv() {
+  async function downloadCsv() {
     const params = new URLSearchParams({ from, to });
     if (siteId) params.set("siteId", siteId);
     if (isManagerOnly && !siteId) return;
-    window.location.href = `/api/exports/csv?${params}`;
+
+    const res = await fetch(`/api/exports/csv?${params}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Export failed" }));
+      alert(err.error ?? "Export failed");
+      return;
+    }
+
+    const blob = new Blob([await res.arrayBuffer()], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `payroll-${from}-to-${to}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function downloadPdf() {
@@ -67,9 +83,10 @@ export function ExportsClient({
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <h2 className="mb-1 font-semibold text-slate-850">Payroll CSV</h2>
+        <h2 className="mb-1 font-semibold text-slate-850">Payroll export</h2>
         <p className="mb-4 text-sm text-slate-500">
-          Worker, site, category, task, cost code ref, date, hours, comment
+          Excel file grouped by category and task with date, hours, comment, and
+          yellow task totals for the selected date range
         </p>
         <div className="space-y-3">
           <div>
@@ -98,7 +115,7 @@ export function ExportsClient({
             </div>
           )}
           <Button onClick={downloadCsv} className="w-full">
-            Download CSV
+            Download Excel
           </Button>
         </div>
       </Card>

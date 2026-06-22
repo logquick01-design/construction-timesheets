@@ -22,18 +22,19 @@
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
     "jose": "^6.0.11",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.513.0",
     "next": "^15.3.3",
+    "prisma": "^6.9.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^2.15.3",
     "tailwind-merge": "^3.3.0",
-    "zod": "^3.25.51",
-    "prisma": "^6.9.0",
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "zod": "^3.25.51"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",

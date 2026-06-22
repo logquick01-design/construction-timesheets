@@ -1,7 +1,14 @@
+import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { canExportSite, getSession, getAccessibleSiteIds } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { endOfDay, formatDate, parseDateInput, startOfDay } from "@/lib/utils";
+
+const TASK_TOTAL_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFFFFF00" },
+};
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -42,32 +49,95 @@ export async function GET(request: Request) {
       site: true,
       task: { include: { category: true } },
     },
-    orderBy: [{ date: "asc" }, { worker: { name: "asc" } }],
   });
 
-  const header =
-    "Worker Name,Site,Category,Task,Cost Code Ref,Date,Hours,Comment";
-  const rows = entries.map((e) => {
-    const date = formatDate(e.date);
-    const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-    return [
-      esc(e.worker.name),
-      esc(e.site.name),
-      esc(e.task.category.name),
-      esc(e.task.name),
-      esc(e.task.reference),
-      date,
-      e.hours.toString(),
-      esc(e.comment ?? ""),
-    ].join(",");
+  type Entry = (typeof entries)[number];
+  type TaskGroup = {
+    task: Entry["task"];
+    site: Entry["site"];
+    entries: Entry[];
+  };
+
+  const taskGroups = new Map<string, TaskGroup>();
+  for (const e of entries) {
+    let group = taskGroups.get(e.taskId);
+    if (!group) {
+      group = { task: e.task, site: e.site, entries: [] };
+      taskGroups.set(e.taskId, group);
+    }
+    group.entries.push(e);
+  }
+
+  const sortedTasks = [...taskGroups.values()].sort((a, b) => {
+    const catA = a.task.category;
+    const catB = b.task.category;
+    if (catA.sortOrder !== catB.sortOrder) return catA.sortOrder - catB.sortOrder;
+    const byCategory = catA.name.localeCompare(catB.name);
+    if (byCategory !== 0) return byCategory;
+    return a.task.name.localeCompare(b.task.name);
   });
 
-  const csv = [header, ...rows].join("\n");
-  const filename = `payroll-${fromStr}-to-${toStr}.csv`;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Payroll");
+  sheet.columns = [
+    { header: "Category", key: "category", width: 22 },
+    { header: "Task", key: "task", width: 28 },
+    { header: "Cost Code Ref", key: "reference", width: 16 },
+    { header: "Site", key: "site", width: 22 },
+    { header: "Worker Name", key: "worker", width: 24 },
+    { header: "Date", key: "date", width: 14 },
+    { header: "Hours", key: "hours", width: 10 },
+    { header: "Comment", key: "comment", width: 32 },
+  ];
 
-  return new NextResponse(csv, {
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+
+  for (const group of sortedTasks) {
+    const sortedEntries = [...group.entries].sort((a, b) => {
+      const byWorker = a.worker.name.localeCompare(b.worker.name);
+      if (byWorker !== 0) return byWorker;
+      return a.date.getTime() - b.date.getTime();
+    });
+
+    let taskTotal = 0;
+    for (const e of sortedEntries) {
+      taskTotal += e.hours;
+      sheet.addRow({
+        category: group.task.category.name,
+        task: group.task.name,
+        reference: group.task.reference,
+        site: group.site.name,
+        worker: e.worker.name,
+        date: formatDate(e.date),
+        hours: e.hours,
+        comment: e.comment ?? "",
+      });
+    }
+
+    const totalRow = sheet.addRow({
+      category: group.task.category.name,
+      task: group.task.name,
+      reference: group.task.reference,
+      site: group.site.name,
+      worker: "Task Total",
+      date: "",
+      hours: taskTotal,
+      comment: "",
+    });
+    totalRow.font = { bold: true };
+    totalRow.eachCell((cell) => {
+      cell.fill = TASK_TOTAL_FILL;
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `payroll-${fromStr}-to-${toStr}.xlsx`;
+
+  return new NextResponse(buffer, {
     headers: {
-      "Content-Type": "text/csv",
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
