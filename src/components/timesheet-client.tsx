@@ -69,7 +69,7 @@ function buildPayload(rows: Row[]) {
 
 function isRowComplete(row: Row): boolean {
   const hours = calcHoursFromTimes(row.startTime, row.finishTime);
-  return Boolean(row.taskId && hours != null && hours > 0);
+  return Boolean(row.categoryId && row.taskId && hours != null && hours > 0);
 }
 
 function suggestedStartForWorker(rows: Row[], workerId: string): string {
@@ -186,8 +186,6 @@ export function TimesheetClient({
   }, [categories]);
 
   function addRow(workerId: string) {
-    const firstCat = categories[0];
-    const firstTask = firstCat?.tasks[0];
     const key = `new-${Date.now()}-${Math.random()}`;
     setRows((prev) => {
       const startTime = suggestedStartForWorker(prev, workerId);
@@ -196,8 +194,8 @@ export function TimesheetClient({
         {
           key,
           workerId,
-          categoryId: firstCat?.id ?? "",
-          taskId: firstTask?.id ?? "",
+          categoryId: "",
+          taskId: "",
           comment: "",
           startTime,
           finishTime: DEFAULT_FINISH_TIME,
@@ -221,9 +219,8 @@ export function TimesheetClient({
       prev.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
-        if (patch.categoryId && patch.categoryId !== r.categoryId) {
-          const tasks = tasksByCategory[patch.categoryId] ?? [];
-          next.taskId = tasks[0]?.id ?? "";
+        if (patch.categoryId !== undefined && patch.categoryId !== r.categoryId) {
+          next.taskId = "";
         }
         return next;
       })
@@ -320,6 +317,7 @@ export function TimesheetClient({
   const hoursByWorker = useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of rows) {
+      if (!isRowComplete(r)) continue;
       const hours = calcHoursFromTimes(r.startTime, r.finishTime);
       if (hours == null || hours <= 0) continue;
       map[r.workerId] = Math.round(((map[r.workerId] ?? 0) + hours) * 100) / 100;
@@ -537,6 +535,7 @@ export function TimesheetClient({
                                 aria-label="Category"
                                 className={compact ? "px-2 py-1 text-sm" : undefined}
                               >
+                                <option value="">Select category…</option>
                                 {categories.map((c) => (
                                   <option key={c.id} value={c.id}>
                                     {c.name}
@@ -549,8 +548,12 @@ export function TimesheetClient({
                                   updateRow(row.key, { taskId: e.target.value })
                                 }
                                 aria-label="Task"
+                                disabled={!row.categoryId}
                                 className={compact ? "px-2 py-1 text-sm" : undefined}
                               >
+                                <option value="">
+                                  {row.categoryId ? "Select task…" : "Select category first"}
+                                </option>
                                 {(tasksByCategory[row.categoryId] ?? []).map((t) => (
                                   <option key={t.id} value={t.id}>
                                     {t.name} ({t.reference})
