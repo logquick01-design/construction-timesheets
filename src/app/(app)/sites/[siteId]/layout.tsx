@@ -16,7 +16,10 @@ export default async function SiteLayout({
 
   if (!canAccessSite(session, siteId)) redirect("/sites");
 
-  const site = await prisma.site.findUnique({ where: { id: siteId } });
+  const site = await prisma.site.findUnique({
+    where: { id: siteId },
+    select: { name: true, location: true },
+  });
   if (!site) notFound();
 
   const tabs = [

@@ -6,7 +6,8 @@ export async function repairCorruptSiteTaskBudgets(prisma: PrismaClient) {
     UPDATE Site
     SET taskBudgetWidget = '[]'
     WHERE taskBudgetWidget IS NULL
-       OR length(CAST(taskBudgetWidget AS TEXT)) = 0
+       OR trim(CAST(taskBudgetWidget AS TEXT)) = ''
+       OR json_valid(CAST(taskBudgetWidget AS TEXT)) = 0
   `);
 }
 

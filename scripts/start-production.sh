@@ -89,6 +89,9 @@ require_auth_secret
 echo "Applying database schema..."
 node_modules/.bin/prisma db push --skip-generate
 
+echo "Repairing dashboard preference data..."
+node scripts/repair-dashboard-preferences.mjs
+
 USER_COUNT="$(node <<'NODE'
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
