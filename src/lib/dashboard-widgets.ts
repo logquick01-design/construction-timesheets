@@ -6,7 +6,6 @@ export type DashboardWidgets = {
   categoryChart: boolean;
   workersList: boolean;
   tasksList: boolean;
-  taskBudgetChart: boolean;
 };
 
 export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgets = {
@@ -15,7 +14,6 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgets = {
   categoryChart: true,
   workersList: true,
   tasksList: true,
-  taskBudgetChart: false,
 };
 
 export const DASHBOARD_WIDGET_LABELS: Record<
@@ -42,11 +40,6 @@ export const DASHBOARD_WIDGET_LABELS: Record<
     label: "Hours per task",
     description: "Ranked list of tasks and their logged hours.",
   },
-  taskBudgetChart: {
-    label: "Task budget usage",
-    description:
-      "Pie charts comparing logged hours against site budget totals. Enable for yourself — task budgets are shared pre-configuration for the site.",
-  },
 };
 
 export const dashboardWidgetsSchema = z.object({
@@ -55,15 +48,17 @@ export const dashboardWidgetsSchema = z.object({
   categoryChart: z.boolean(),
   workersList: z.boolean(),
   tasksList: z.boolean(),
-  taskBudgetChart: z.boolean(),
 });
 
 export function mergeDashboardWidgets(stored: unknown): DashboardWidgets {
   if (!stored || typeof stored !== "object") return { ...DEFAULT_DASHBOARD_WIDGETS };
 
+  const rest = { ...(stored as Record<string, unknown>) };
+  delete rest.taskBudgetChart;
+
   const parsed = dashboardWidgetsSchema.safeParse({
     ...DEFAULT_DASHBOARD_WIDGETS,
-    ...stored,
+    ...rest,
   });
 
   return parsed.success ? parsed.data : { ...DEFAULT_DASHBOARD_WIDGETS };

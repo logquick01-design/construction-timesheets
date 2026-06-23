@@ -3,11 +3,13 @@ import { z } from "zod";
 export type TaskBudgetEntry = {
   taskId: string;
   budgetHours: number;
+  enabled: boolean;
 };
 
 export const taskBudgetEntrySchema = z.object({
   taskId: z.string().min(1),
   budgetHours: z.number().positive(),
+  enabled: z.boolean().default(true),
 });
 
 export const taskBudgetsSchema = z.array(taskBudgetEntrySchema);
@@ -22,7 +24,10 @@ export function mergeTaskBudgets(stored: unknown): TaskBudgetEntry[] {
     const parsed = taskBudgetEntrySchema.safeParse(item);
     if (!parsed.success || seen.has(parsed.data.taskId)) continue;
     seen.add(parsed.data.taskId);
-    entries.push(parsed.data);
+    entries.push({
+      ...parsed.data,
+      enabled: parsed.data.enabled ?? true,
+    });
   }
 
   return entries;

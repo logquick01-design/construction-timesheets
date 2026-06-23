@@ -52,13 +52,27 @@ export function TaskBudgetCharts({
 }) {
   const taskMap = new Map(siteTasks.map((task) => [task.id, task]));
 
+  const visibleBudgets = taskBudgets.filter((entry) => entry.enabled);
+
   if (taskBudgets.length === 0) {
     return (
       <Card>
         <h2 className="mb-2 font-semibold text-ink">Task budget usage</h2>
         <p className="text-sm text-muted">
-          Open widget settings and configure site task budgets. Turn on the widget to see charts
-          on your dashboard.
+          Open widget settings and configure site task budgets. Use the show toggle on each task to
+          control which charts appear.
+        </p>
+      </Card>
+    );
+  }
+
+  if (visibleBudgets.length === 0) {
+    return (
+      <Card>
+        <h2 className="mb-2 font-semibold text-ink">Task budget usage</h2>
+        <p className="text-sm text-muted">
+          Task budgets are configured but none are turned on. Open widget settings and enable the
+          comparisons you want to show.
         </p>
       </Card>
     );
@@ -68,7 +82,7 @@ export function TaskBudgetCharts({
     <div className="space-y-4">
       <h2 className="font-semibold text-ink">Task budget usage</h2>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {taskBudgets.map((entry) => {
+        {visibleBudgets.map((entry) => {
           const task = taskMap.get(entry.taskId);
           if (!task) return null;
 
@@ -160,6 +174,16 @@ export function TaskBudgetSettingsPanel({
     await persist(next);
   }
 
+  async function updateEnabled(taskId: string, enabled: boolean) {
+    const previous = draft;
+    const next = draft.map((entry) =>
+      entry.taskId === taskId ? { ...entry, enabled } : entry
+    );
+    setDraft(next);
+    const saved = await persist(next);
+    if (!saved) setDraft(previous);
+  }
+
   async function removeTask(taskId: string) {
     await persist(draft.filter((entry) => entry.taskId !== taskId));
   }
@@ -168,7 +192,7 @@ export function TaskBudgetSettingsPanel({
     const budgetHours = Number(newBudgetHours);
     if (!newTaskId || !Number.isFinite(budgetHours) || budgetHours <= 0) return;
 
-    const next = [...draft, { taskId: newTaskId, budgetHours }];
+    const next = [...draft, { taskId: newTaskId, budgetHours, enabled: true }];
     const saved = await persist(next);
     if (saved) {
       setNewTaskId("");
@@ -186,9 +210,9 @@ export function TaskBudgetSettingsPanel({
       <Card>
         <h2 className="font-semibold text-ink">Task budget usage</h2>
         <p className="mt-1 mb-4 text-sm text-muted">
-          Set budget hour totals for individual tasks on this site. These pre-configured budgets
-          are shared with everyone on the project — each person chooses whether to show the widget
-          on their own dashboard.
+          Set budget hour totals for individual tasks on this site. Use the show toggle next to each
+          task to choose which comparisons appear on the dashboard. Budget totals are shared with
+          everyone on the project.
         </p>
 
         {draft.length > 0 && (
@@ -205,6 +229,24 @@ export function TaskBudgetSettingsPanel({
                       {task.reference} · {task.category.name}
                     </p>
                   </div>
+                  <label
+                    htmlFor={`enabled-${entry.taskId}`}
+                    className="flex cursor-pointer flex-col items-center gap-1.5 pb-0.5"
+                  >
+                    <span className="text-xs text-muted">Show</span>
+                    <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+                      <input
+                        id={`enabled-${entry.taskId}`}
+                        type="checkbox"
+                        checked={entry.enabled}
+                        disabled={saving}
+                        onChange={(e) => void updateEnabled(entry.taskId, e.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <span className="pointer-events-none absolute inset-0 rounded-full bg-border transition peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/30 peer-disabled:opacity-50" />
+                      <span className="pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+                    </span>
+                  </label>
                   <div className="w-32">
                     <Label htmlFor={`budget-${entry.taskId}`}>Budget hrs</Label>
                     <Input

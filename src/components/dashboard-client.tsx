@@ -312,7 +312,7 @@ export function DashboardClient({
         </div>
       )}
 
-      {widgets.taskBudgetChart && (
+      {lockedSiteId && (
         <TaskBudgetCharts
           taskBudgets={taskBudgets}
           siteTasks={siteTasks}
@@ -342,33 +342,37 @@ export function DashboardClient({
           <h2 className="font-semibold text-ink">Dashboard widgets</h2>
           <p className="mt-1 mb-4 text-sm text-muted">
             Choose which sections appear on your dashboard. At least one widget must stay enabled.
-            Task budget totals are configured separately and shared for the site.
           </p>
           <div className="space-y-2">
             {(Object.keys(DASHBOARD_WIDGET_LABELS) as Array<keyof DashboardWidgets>).map((key) => (
-              <div key={key} className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <Toggle
-                    id={`widget-${key}`}
-                    checked={widgets[key]}
-                    onChange={(checked) => updateWidget(key, checked)}
-                    label={DASHBOARD_WIDGET_LABELS[key].label}
-                    description={DASHBOARD_WIDGET_LABELS[key].description}
-                  />
-                </div>
-                {key === "taskBudgetChart" && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 shrink-0 text-accent"
-                    onClick={() => setSettingsView("taskBudgetConfig")}
-                  >
-                    Configure
-                  </Button>
-                )}
-              </div>
+              <Toggle
+                key={key}
+                id={`widget-${key}`}
+                checked={widgets[key]}
+                onChange={(checked) => updateWidget(key, checked)}
+                label={DASHBOARD_WIDGET_LABELS[key].label}
+                description={DASHBOARD_WIDGET_LABELS[key].description}
+              />
             ))}
+          </div>
+
+          <div className="mt-4 flex items-start justify-between gap-3 border-t border-border-light pt-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Task budget usage</p>
+              <p className="mt-0.5 text-sm text-muted">
+                Pie charts comparing logged hours against site budget totals. Use the show toggle on
+                each task to control which appear on the dashboard.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-1 shrink-0 text-accent"
+              onClick={() => setSettingsView("taskBudgetConfig")}
+            >
+              Configure
+            </Button>
           </div>
         </Card>
       </div>
