@@ -23,7 +23,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  siteAssignments SiteManagerAssignment[]
+  siteAssignments              SiteManagerAssignment[]
+  siteDashboardPreferences     UserSiteDashboardPreference[]
 }
 
 model Site {
@@ -34,8 +35,9 @@ model Site {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  managers   SiteManagerAssignment[]
-  companies  Company[]
+  managers              SiteManagerAssignment[]
+  dashboardPreferences  UserSiteDashboardPreference[]
+  companies             Company[]
   workers    Worker[]
   categories CostCodeCategory[]
   tasks      CostCodeTask[]
@@ -48,6 +50,20 @@ model SiteManagerAssignment {
   siteId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, siteId])
+}
+
+model UserSiteDashboardPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  siteId    String
+  widgets   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@unique([userId, siteId])
 }

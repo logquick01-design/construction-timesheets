@@ -11,8 +11,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, Input, Label, Select } from "./ui";
+import { Cog } from "lucide-react";
+import { Button, Card, Input, Label, Select, Toggle } from "./ui";
 import type { UserRole } from "@prisma/client";
+import {
+  DASHBOARD_WIDGET_LABELS,
+  DEFAULT_DASHBOARD_WIDGETS,
+  type DashboardWidgets,
+} from "@/lib/dashboard-widgets";
+import { cn } from "@/lib/utils";
 
 const CHART_COLORS = ["#0a0a0a", "#c4783b", "#7a7268", "#a86432"];
 
@@ -24,12 +31,16 @@ export function DashboardClient({
   role,
   siteIds,
   lockedSiteId,
+  pageTitle,
+  pageSubtitle,
 }: {
   defaultFrom: string;
   defaultTo: string;
   role: UserRole;
   siteIds: string[];
   lockedSiteId?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
 }) {
   const [sites, setSites] = useState<Site[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
@@ -37,6 +48,9 @@ export function DashboardClient({
   const [categoryId, setCategoryId] = useState("");
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
+  const [showSettings, setShowSettings] = useState(false);
+  const [widgets, setWidgets] = useState<DashboardWidgets>(DEFAULT_DASHBOARD_WIDGETS);
+  const [widgetsLoaded, setWidgetsLoaded] = useState(!lockedSiteId);
   const [data, setData] = useState<{
     chartData: Record<string, string | number>[];
     workers: { name: string; hours: number }[];
@@ -54,6 +68,51 @@ export function DashboardClient({
         if (s.length === 1) setSiteId(s[0].id);
       });
   }, [lockedSiteId]);
+
+  useEffect(() => {
+    if (!lockedSiteId) return;
+
+    fetch(`/api/sites/${lockedSiteId}/dashboard/widgets`)
+      .then((r) => r.json())
+      .then((json: { widgets?: DashboardWidgets }) => {
+        if (json.widgets) setWidgets(json.widgets);
+      })
+      .finally(() => setWidgetsLoaded(true));
+  }, [lockedSiteId]);
+
+  const saveWidgets = useCallback(
+    async (next: DashboardWidgets) => {
+      if (!lockedSiteId) return true;
+
+      const res = await fetch(`/api/sites/${lockedSiteId}/dashboard/widgets`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to save widget settings" }));
+        alert(err.error ?? "Failed to save widget settings");
+        return false;
+      }
+
+      const json = (await res.json()) as { widgets: DashboardWidgets };
+      setWidgets(json.widgets);
+      return true;
+    },
+    [lockedSiteId]
+  );
+
+  async function updateWidget<K extends keyof DashboardWidgets>(key: K, value: boolean) {
+    const next = { ...widgets, [key]: value };
+    const saved = await saveWidgets(next);
+    if (saved) setWidgets(next);
+  }
+
+  async function resetWidgets() {
+    const saved = await saveWidgets(DEFAULT_DASHBOARD_WIDGETS);
+    if (saved) setWidgets(DEFAULT_DASHBOARD_WIDGETS);
+  }
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ from, to });
@@ -74,57 +133,59 @@ export function DashboardClient({
 
   const catNames = categories.map((c) => c.name);
 
-  return (
-    <div className="space-y-6">
-      <Card className={`grid gap-4 sm:grid-cols-2 ${lockedSiteId ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
+  const filtersCard = (
+    <Card className={`grid gap-4 sm:grid-cols-2 ${lockedSiteId ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
+      <div>
+        <Label>From</Label>
+        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      </div>
+      <div>
+        <Label>To</Label>
+        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      </div>
+      {!lockedSiteId && (
         <div>
-          <Label>From</Label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div>
-          <Label>To</Label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
-        {!lockedSiteId && (
-          <div>
-            <Label>Site</Label>
-            <Select
-              value={siteId}
-              onChange={(e) => setSiteId(e.target.value)}
-              disabled={role === "SITE_MANAGER" && siteIds.length === 1}
-            >
-              <option value="">All sites</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-        <div>
-          <Label>Category</Label>
-          <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+          <Label>Site</Label>
+          <Select
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            disabled={role === "SITE_MANAGER" && siteIds.length === 1}
+          >
+            <option value="">All sites</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
             ))}
           </Select>
         </div>
-      </Card>
+      )}
+      <div>
+        <Label>Category</Label>
+        <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">All categories</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </Card>
+  );
 
-      {data && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  const dashboardContent = data && (
+    <>
+      {(widgets.totalHours || widgets.siteHours) && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {widgets.totalHours && (
             <Card>
               <p className="text-sm text-muted">Total hours (filtered)</p>
-              <p className="text-3xl font-bold text-ink">
-                {data.grandTotal.toFixed(1)}
-              </p>
+              <p className="text-3xl font-bold text-ink">{data.grandTotal.toFixed(1)}</p>
             </Card>
-            {sites.map((s) => (
+          )}
+          {widgets.siteHours &&
+            sites.map((s) => (
               <Card key={s.id}>
                 <p className="text-sm text-muted">{s.name}</p>
                 <p className="text-2xl font-bold text-accent">
@@ -132,34 +193,39 @@ export function DashboardClient({
                 </p>
               </Card>
             ))}
+        </div>
+      )}
+
+      {widgets.categoryChart && (
+        <Card>
+          <h2 className="mb-4 font-semibold text-ink">
+            {lockedSiteId ? "Hours by category" : "Hours by category per site"}
+          </h2>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                <XAxis dataKey="site" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Legend />
+                {catNames.map((name, i) => (
+                  <Bar
+                    key={name}
+                    dataKey={name}
+                    stackId="a"
+                    fill={CHART_COLORS[i % CHART_COLORS.length]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
           </div>
+        </Card>
+      )}
 
-          <Card>
-            <h2 className="mb-4 font-semibold text-ink">
-              {lockedSiteId ? "Hours by category" : "Hours by category per site"}
-            </h2>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                  <XAxis dataKey="site" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Legend />
-                  {catNames.map((name, i) => (
-                    <Bar
-                      key={name}
-                      dataKey={name}
-                      stackId="a"
-                      fill={CHART_COLORS[i % CHART_COLORS.length]}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
+      {(widgets.workersList || widgets.tasksList) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {widgets.workersList && (
             <Card>
               <h2 className="mb-3 font-semibold text-ink">Hours per worker</h2>
               <ul className="divide-y divide-border-light">
@@ -174,6 +240,8 @@ export function DashboardClient({
                 ))}
               </ul>
             </Card>
+          )}
+          {widgets.tasksList && (
             <Card>
               <h2 className="mb-3 font-semibold text-ink">Hours per task</h2>
               <ul className="divide-y divide-border-light">
@@ -191,9 +259,82 @@ export function DashboardClient({
                 ))}
               </ul>
             </Card>
-          </div>
-        </>
+          )}
+        </div>
       )}
+    </>
+  );
+
+  const settingsContent = (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button type="button" variant="ghost" size="sm" onClick={resetWidgets}>
+          Reset all to defaults
+        </Button>
+      </div>
+
+      <Card>
+        <h2 className="font-semibold text-ink">Dashboard widgets</h2>
+        <p className="mt-1 mb-4 text-sm text-muted">
+          Choose which sections appear on this site&apos;s dashboard. At least one widget must
+          stay enabled.
+        </p>
+        <div className="space-y-2">
+          {(Object.keys(DASHBOARD_WIDGET_LABELS) as Array<keyof DashboardWidgets>).map((key) => (
+            <Toggle
+              key={key}
+              id={`widget-${key}`}
+              checked={widgets[key]}
+              onChange={(checked) => updateWidget(key, checked)}
+              label={DASHBOARD_WIDGET_LABELS[key].label}
+              description={DASHBOARD_WIDGET_LABELS[key].description}
+            />
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+
+  if (lockedSiteId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-ink">{pageTitle ?? "Dashboard"}</h1>
+            {pageSubtitle && <p className="mt-1 text-muted">{pageSubtitle}</p>}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Widget settings"
+            aria-pressed={showSettings}
+            onClick={() => setShowSettings((open) => !open)}
+            className={cn(
+              "mt-1 shrink-0 p-2",
+              showSettings && "bg-fill text-accent"
+            )}
+          >
+            <Cog className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {showSettings ? (
+          settingsContent
+        ) : (
+          <div className="space-y-6">
+            {filtersCard}
+            {widgetsLoaded && dashboardContent}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {filtersCard}
+      {dashboardContent}
     </div>
   );
 }
