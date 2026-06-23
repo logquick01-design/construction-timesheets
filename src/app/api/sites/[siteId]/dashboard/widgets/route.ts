@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { canAccessSite, getSession } from "@/lib/auth";
 import {
-  DEFAULT_DASHBOARD_WIDGETS,
   dashboardWidgetsSchema,
   hasEnabledWidget,
   mergeDashboardWidgets,

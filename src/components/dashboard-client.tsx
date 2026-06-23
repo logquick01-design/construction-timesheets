@@ -19,11 +19,18 @@ import {
   DEFAULT_DASHBOARD_WIDGETS,
   type DashboardWidgets,
 } from "@/lib/dashboard-widgets";
+import type { TaskBudgetEntry } from "@/lib/task-budgets";
+import {
+  TaskBudgetCharts,
+  TaskBudgetSettingsPanel,
+  type SiteTask,
+} from "./task-budget-panel";
 import { cn } from "@/lib/utils";
 
 const CHART_COLORS = ["#0a0a0a", "#c4783b", "#7a7268", "#a86432"];
 
 type Site = { id: string; name: string };
+type SettingsView = "widgets" | "taskBudgetConfig";
 
 export function DashboardClient({
   defaultFrom,
@@ -49,12 +56,15 @@ export function DashboardClient({
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsView, setSettingsView] = useState<SettingsView>("widgets");
   const [widgets, setWidgets] = useState<DashboardWidgets>(DEFAULT_DASHBOARD_WIDGETS);
+  const [taskBudgets, setTaskBudgets] = useState<TaskBudgetEntry[]>([]);
+  const [siteTasks, setSiteTasks] = useState<SiteTask[]>([]);
   const [widgetsLoaded, setWidgetsLoaded] = useState(!lockedSiteId);
   const [data, setData] = useState<{
     chartData: Record<string, string | number>[];
     workers: { name: string; hours: number }[];
-    tasks: { name: string; reference: string; hours: number }[];
+    tasks: { taskId: string; name: string; reference: string; hours: number }[];
     grandTotal: number;
     totalBySite: Record<string, number>;
   } | null>(null);
@@ -78,6 +88,18 @@ export function DashboardClient({
         if (json.widgets) setWidgets(json.widgets);
       })
       .finally(() => setWidgetsLoaded(true));
+
+    fetch(`/api/sites/${lockedSiteId}/dashboard/task-budgets`)
+      .then((r) => r.json())
+      .then((json: { taskBudgets?: TaskBudgetEntry[] }) => {
+        if (json.taskBudgets) setTaskBudgets(json.taskBudgets);
+      });
+
+    fetch(`/api/sites/${lockedSiteId}/tasks`)
+      .then((r) => r.json())
+      .then((tasks: SiteTask[]) => {
+        if (Array.isArray(tasks)) setSiteTasks(tasks);
+      });
   }, [lockedSiteId]);
 
   const saveWidgets = useCallback(
@@ -103,6 +125,29 @@ export function DashboardClient({
     [lockedSiteId]
   );
 
+  const saveTaskBudgets = useCallback(
+    async (next: TaskBudgetEntry[]) => {
+      if (!lockedSiteId) return true;
+
+      const res = await fetch(`/api/sites/${lockedSiteId}/dashboard/task-budgets`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to save task budgets" }));
+        alert(err.error ?? "Failed to save task budgets");
+        return false;
+      }
+
+      const json = (await res.json()) as { taskBudgets: TaskBudgetEntry[] };
+      setTaskBudgets(json.taskBudgets);
+      return true;
+    },
+    [lockedSiteId]
+  );
+
   async function updateWidget<K extends keyof DashboardWidgets>(key: K, value: boolean) {
     const next = { ...widgets, [key]: value };
     const saved = await saveWidgets(next);
@@ -112,6 +157,7 @@ export function DashboardClient({
   async function resetWidgets() {
     const saved = await saveWidgets(DEFAULT_DASHBOARD_WIDGETS);
     if (saved) setWidgets(DEFAULT_DASHBOARD_WIDGETS);
+    setSettingsView("widgets");
   }
 
   const load = useCallback(async () => {
@@ -132,6 +178,9 @@ export function DashboardClient({
   }, [load]);
 
   const catNames = categories.map((c) => c.name);
+  const hoursByTaskId = Object.fromEntries(
+    (data?.tasks ?? []).map((task) => [task.taskId, task.hours])
+  );
 
   const filtersCard = (
     <Card className={`grid gap-4 sm:grid-cols-2 ${lockedSiteId ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
@@ -249,7 +298,7 @@ export function DashboardClient({
                   <li className="py-2 text-sm text-muted-light">No data</li>
                 )}
                 {data.tasks.map((t) => (
-                  <li key={t.reference} className="flex justify-between gap-2 py-2 text-sm">
+                  <li key={t.taskId} className="flex justify-between gap-2 py-2 text-sm">
                     <span>
                       {t.name}{" "}
                       <span className="text-muted-light">({t.reference})</span>
@@ -262,38 +311,68 @@ export function DashboardClient({
           )}
         </div>
       )}
+
+      {widgets.taskBudgetChart && (
+        <TaskBudgetCharts
+          taskBudgets={taskBudgets}
+          siteTasks={siteTasks}
+          hoursByTaskId={hoursByTaskId}
+        />
+      )}
     </>
   );
 
-  const settingsContent = (
-    <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button type="button" variant="ghost" size="sm" onClick={resetWidgets}>
-          Reset all to defaults
-        </Button>
-      </div>
-
-      <Card>
-        <h2 className="font-semibold text-ink">Dashboard widgets</h2>
-        <p className="mt-1 mb-4 text-sm text-muted">
-          Choose which sections appear on this site&apos;s dashboard. At least one widget must
-          stay enabled.
-        </p>
-        <div className="space-y-2">
-          {(Object.keys(DASHBOARD_WIDGET_LABELS) as Array<keyof DashboardWidgets>).map((key) => (
-            <Toggle
-              key={key}
-              id={`widget-${key}`}
-              checked={widgets[key]}
-              onChange={(checked) => updateWidget(key, checked)}
-              label={DASHBOARD_WIDGET_LABELS[key].label}
-              description={DASHBOARD_WIDGET_LABELS[key].description}
-            />
-          ))}
+  const settingsContent =
+    settingsView === "taskBudgetConfig" ? (
+      <TaskBudgetSettingsPanel
+        taskBudgets={taskBudgets}
+        siteTasks={siteTasks}
+        onSave={saveTaskBudgets}
+        onBack={() => setSettingsView("widgets")}
+      />
+    ) : (
+      <div className="space-y-6">
+        <div className="flex justify-end">
+          <Button type="button" variant="ghost" size="sm" onClick={resetWidgets}>
+            Reset all to defaults
+          </Button>
         </div>
-      </Card>
-    </div>
-  );
+
+        <Card>
+          <h2 className="font-semibold text-ink">Dashboard widgets</h2>
+          <p className="mt-1 mb-4 text-sm text-muted">
+            Choose which sections appear on your dashboard. At least one widget must stay enabled.
+            Task budget totals are configured separately and shared for the site.
+          </p>
+          <div className="space-y-2">
+            {(Object.keys(DASHBOARD_WIDGET_LABELS) as Array<keyof DashboardWidgets>).map((key) => (
+              <div key={key} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <Toggle
+                    id={`widget-${key}`}
+                    checked={widgets[key]}
+                    onChange={(checked) => updateWidget(key, checked)}
+                    label={DASHBOARD_WIDGET_LABELS[key].label}
+                    description={DASHBOARD_WIDGET_LABELS[key].description}
+                  />
+                </div>
+                {key === "taskBudgetChart" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 shrink-0 text-accent"
+                    onClick={() => setSettingsView("taskBudgetConfig")}
+                  >
+                    Configure
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    );
 
   if (lockedSiteId) {
     return (
@@ -309,7 +388,12 @@ export function DashboardClient({
             size="sm"
             aria-label="Widget settings"
             aria-pressed={showSettings}
-            onClick={() => setShowSettings((open) => !open)}
+            onClick={() => {
+              setShowSettings((open) => {
+                if (open) setSettingsView("widgets");
+                return !open;
+              });
+            }}
             className={cn(
               "mt-1 shrink-0 p-2",
               showSettings && "bg-fill text-accent"

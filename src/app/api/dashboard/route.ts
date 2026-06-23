@@ -126,7 +126,9 @@ export async function GET(request: Request) {
     totalBySite,
     chartData,
     workers: Object.values(byWorker).sort((a, b) => b.hours - a.hours),
-    tasks: Object.values(byTask).sort((a, b) => b.hours - a.hours),
+    tasks: Object.entries(byTask)
+      .map(([taskId, task]) => ({ taskId, ...task }))
+      .sort((a, b) => b.hours - a.hours),
     grandTotal: entries.reduce((s, e) => s + e.hours, 0),
   });
 }

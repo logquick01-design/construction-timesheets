@@ -32,6 +32,7 @@ model Site {
   name      String
   location  String
   active    Boolean  @default(true)
+  taskBudgetWidget Json @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -58,7 +59,7 @@ model UserSiteDashboardPreference {
   id        String   @id @default(cuid())
   userId    String
   siteId    String
-  widgets   Json
+  widgets     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
