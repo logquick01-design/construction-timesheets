@@ -33,3 +33,11 @@ export function canViewAllSites(session: SessionUser) {
 export function canExport(session: SessionUser) {
   return true;
 }
+
+export function canCreateLabourRequest(session: SessionUser) {
+  return session.role === "ADMIN" || session.role === "SITE_MANAGER";
+}
+
+export function canReviewLabourRequests(session: SessionUser) {
+  return session.role === "ADMIN";
+}

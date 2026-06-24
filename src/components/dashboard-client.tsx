@@ -25,6 +25,7 @@ import {
   TaskBudgetSettingsPanel,
   type SiteTask,
 } from "./task-budget-panel";
+import { LabourNotificationsWidget } from "./labour-notifications-widget";
 import { cn } from "@/lib/utils";
 
 const CHART_COLORS = ["#0a0a0a", "#c4783b", "#7a7268", "#a86432"];
@@ -317,6 +318,10 @@ export function DashboardClient({
           siteTasks={siteTasks}
           hoursByTaskId={taskBudgetHoursByTaskId}
         />
+      )}
+
+      {lockedSiteId && widgets.labourNotifications && (
+        <LabourNotificationsWidget siteId={lockedSiteId} />
       )}
     </>
   );

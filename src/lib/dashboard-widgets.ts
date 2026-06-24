@@ -6,6 +6,7 @@ export type DashboardWidgets = {
   categoryChart: boolean;
   workersList: boolean;
   tasksList: boolean;
+  labourNotifications: boolean;
 };
 
 export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgets = {
@@ -14,6 +15,7 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgets = {
   categoryChart: true,
   workersList: true,
   tasksList: true,
+  labourNotifications: true,
 };
 
 export const DASHBOARD_WIDGET_LABELS: Record<
@@ -40,6 +42,10 @@ export const DASHBOARD_WIDGET_LABELS: Record<
     label: "Hours per task",
     description: "Ranked list of tasks and their logged hours.",
   },
+  labourNotifications: {
+    label: "Labour notifications",
+    description: "Alerts when labour look-ahead requests are denied.",
+  },
 };
 
 export const dashboardWidgetsSchema = z.object({
@@ -48,6 +54,7 @@ export const dashboardWidgetsSchema = z.object({
   categoryChart: z.boolean(),
   workersList: z.boolean(),
   tasksList: z.boolean(),
+  labourNotifications: z.boolean(),
 });
 
 export function mergeDashboardWidgets(stored: unknown): DashboardWidgets {

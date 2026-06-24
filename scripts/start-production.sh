@@ -110,6 +110,14 @@ else
   echo "Database already seeded ($USER_COUNT users)."
 fi
 
+if [[ -n "${RAILWAY_VOLUME_MOUNT_PATH:-}" ]] || [[ "${DATABASE_URL:-}" == *"/data/"* ]]; then
+  echo "Creating startup database backup..."
+  node scripts/backup-database.mjs || echo "WARNING: Startup backup failed"
+
+  echo "Starting background backup scheduler..."
+  node scripts/backup-scheduler.mjs &
+fi
+
 PORT="${PORT:-3000}"
 echo "Starting server on 0.0.0.0:${PORT}..."
 exec node node_modules/next/dist/bin/next start -H 0.0.0.0 -p "$PORT"

@@ -118,6 +118,9 @@ export function MobileNav({
               {showAdmin && (
                 <MobileNavLink href="/admin" label="Company Admin" pathname={pathname} onNavigate={close} />
               )}
+              {showAdmin && (
+                <MobileNavLink href="/admin/labour-calendar" label="Labour Calendar" pathname={pathname} onNavigate={close} />
+              )}
 
               <div className="mt-1 border-t border-border-light pt-2">
                 <p className="px-3 py-1 text-sm text-muted">{sessionName}</p>

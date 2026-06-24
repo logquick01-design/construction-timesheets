@@ -13,6 +13,13 @@ enum UserRole {
   QS
 }
 
+enum LabourRequestStatus {
+  PENDING
+  ACCEPTED
+  DENIED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -25,6 +32,8 @@ model User {
 
   siteAssignments              SiteManagerAssignment[]
   siteDashboardPreferences     UserSiteDashboardPreference[]
+  labourRequestsRequested      LabourRequest[] @relation("LabourRequestedBy")
+  labourRequestsReviewed       LabourRequest[] @relation("LabourReviewedBy")
 }
 
 model Site {
@@ -43,6 +52,8 @@ model Site {
   categories CostCodeCategory[]
   tasks      CostCodeTask[]
   timesheets TimesheetEntry[]
+  labourRequests LabourRequest[]
+  notifications  SiteNotification[]
 }
 
 model SiteManagerAssignment {
@@ -97,6 +108,7 @@ model Worker {
   site       Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
   company    Company?         @relation(fields: [companyId], references: [id])
   timesheets TimesheetEntry[]
+  labourRequestWorkers LabourRequestWorker[]
 
   @@index([siteId])
   @@index([companyId])
@@ -153,4 +165,64 @@ model TimesheetEntry {
 
   @@index([siteId, date])
   @@index([workerId, date])
+}
+
+model LabourRequest {
+  id            String              @id @default(cuid())
+  siteId        String
+  status        LabourRequestStatus @default(PENDING)
+  notes         String?
+  requestedById String
+  reviewedById  String?
+  reviewedAt    DateTime?
+  denialReason  String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  site        Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  requestedBy User                  @relation("LabourRequestedBy", fields: [requestedById], references: [id])
+  reviewedBy  User?                 @relation("LabourReviewedBy", fields: [reviewedById], references: [id])
+  days        LabourRequestDay[]
+  workers     LabourRequestWorker[]
+
+  @@index([siteId, status])
+  @@index([status])
+}
+
+model LabourRequestDay {
+  id              String   @id @default(cuid())
+  labourRequestId String
+  date            DateTime
+
+  labourRequest LabourRequest @relation(fields: [labourRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([labourRequestId, date])
+  @@index([date])
+}
+
+model LabourRequestWorker {
+  id              String @id @default(cuid())
+  labourRequestId String
+  workerId        String
+  hoursPerDay     Float  @default(8)
+
+  labourRequest LabourRequest @relation(fields: [labourRequestId], references: [id], onDelete: Cascade)
+  worker         Worker       @relation(fields: [workerId], references: [id])
+
+  @@unique([labourRequestId, workerId])
+}
+
+model SiteNotification {
+  id        String   @id @default(cuid())
+  siteId    String
+  type      String
+  title     String
+  message   String
+  meta      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, read])
 }

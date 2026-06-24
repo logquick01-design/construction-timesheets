@@ -66,6 +66,10 @@ async function seedSite(opts: {
 }
 
 async function main() {
+  await prisma.siteNotification.deleteMany();
+  await prisma.labourRequestWorker.deleteMany();
+  await prisma.labourRequestDay.deleteMany();
+  await prisma.labourRequest.deleteMany();
   await prisma.timesheetEntry.deleteMany();
   await prisma.siteManagerAssignment.deleteMany();
   await prisma.costCodeTask.deleteMany();

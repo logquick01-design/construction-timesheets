@@ -99,6 +99,32 @@ On first boot, the app applies the schema and seeds demo data automatically. Dat
 
 **Data still resetting?** Check deploy logs for `WARNING: Running on Railway without a persistent volume` — that means no volume is attached. Add one from the project canvas (right-click or ⌘K → Volume), not from Settings.
 
+### Backups
+
+LogQ stores production data in SQLite on the Railway volume at `/data/prod.db`.
+
+**Automatic app backups** (enabled in production startup):
+
+- Backup on every deploy/restart
+- Scheduled copies every 6 hours to `/data/backups/` (keeps the latest 14)
+
+**Railway volume snapshots** (Pro plan — recommended):
+
+1. Open your service in Railway → **Backups** tab
+2. Click **Edit schedule** → enable **Daily** and **Weekly**
+3. Or run: `bash scripts/railway-setup-backups.sh`
+
+Daily snapshots are kept 6 days; weekly snapshots are kept 1 month. You can restore from the Backups tab if needed.
+
+**Download a SQLite backup locally:**
+
+```bash
+npx @railway/cli volume files list /backups
+npx @railway/cli volume files download /backups/prod-YYYY-MM-DDTHH-MM-SS.db ./prod-backup.db
+```
+
+(Railway may prompt you to select the `/data` volume and configure SSH keys for file access.)
+
 ### 3. Share the link
 
 Railway assigns a public URL (e.g. `https://logq-production.up.railway.app`). Share it with testers along with the demo logins above.

@@ -24,6 +24,7 @@ export default async function SiteLayout({
 
   const tabs = [
     { segment: "dashboard", label: "Dashboard" },
+    { segment: "lookahead", label: "Look Ahead" },
     ...(canLogHours(session) ? [{ segment: "timesheet", label: "Log Hours" }] : []),
     ...(canManageSite(session, siteId) ? [{ segment: "setup", label: "Setup" }] : []),
     { segment: "exports", label: "Exports" },

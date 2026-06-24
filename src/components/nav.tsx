@@ -24,6 +24,7 @@ export async function AppNav() {
           <SiteDropdown sites={sites} />
           {showOverview && <NavLink href="/exports" label="Exports" />}
           {showAdmin && <NavLink href="/admin" label="Company Admin" />}
+          {showAdmin && <NavLink href="/admin/labour-calendar" label="Labour Calendar" />}
           <span className="text-sm text-white">{session.name}</span>
           <LogoutButton className="text-white hover:bg-white/10" />
         </nav>
