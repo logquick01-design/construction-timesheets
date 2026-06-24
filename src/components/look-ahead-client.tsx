@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
+import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
 import {
   datesToStrings,
   nextWeekWeekdays,
+  rescheduleRequestDate,
   thisWeekWeekdays,
   uniqueDateStrings,
 } from "@/lib/labour-dates";
 import { formatDate } from "@/lib/utils";
 import { Button, Card, Input, Label } from "./ui";
-import { asWorkerList, errorMessageFromBody, readJsonResponse } from "@/lib/fetch-json";
+import { asWorkerList, errorMessageFromBody, errorMessageFromResponse, readJsonResponse } from "@/lib/fetch-json";
 import {
   addDays,
   formatWeekLabel,
@@ -314,62 +316,103 @@ export function LookAheadClient({
     | { mode: "edit" | "view"; request: SerializedLabourRequest }
     | null
   >(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const weekEnd = addDays(weekStart, 6);
   const from = formatDate(weekStart);
   const to = formatDate(weekEnd);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const params = new URLSearchParams({
-        siteId,
-        from,
-        to,
-        status: "PENDING,ACCEPTED",
-      });
-      const [reqRes, workerRes] = await Promise.all([
-        fetch(`/api/labour-requests?${params}`),
-        fetch(`/api/sites/${siteId}/workers`),
-      ]);
-
-      const reqJson = await readJsonResponse<{ requests?: SerializedLabourRequest[]; error?: string }>(reqRes);
-      const workerJson = await readJsonResponse<unknown>(workerRes);
-
-      if (!reqRes.ok) {
-        setLoadError(errorMessageFromBody(reqJson, "Failed to load labour requests"));
-        setRequests([]);
-      } else {
-        setRequests(reqJson?.requests ?? []);
-      }
-
-      if (!workerRes.ok) {
-        setLoadError((prev) => prev || errorMessageFromBody(workerJson, "Failed to load workers"));
-        setWorkers([]);
-      } else if (asWorkerList(workerJson)) {
-        setWorkers(workerJson);
-      } else {
-        setWorkers([]);
-      }
-    } catch {
-      setLoadError("Failed to load calendar data");
-      setRequests([]);
-      setWorkers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [siteId, from, to]);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const controller = new AbortController();
+
+    async function run() {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const params = new URLSearchParams({
+          siteId,
+          from,
+          to,
+          status: "PENDING,ACCEPTED",
+        });
+        const [reqRes, workerRes] = await Promise.all([
+          fetch(`/api/labour-requests?${params}`, { signal: controller.signal }),
+          fetch(`/api/sites/${siteId}/workers`, { signal: controller.signal }),
+        ]);
+
+        const reqJson = await readJsonResponse<{ requests?: SerializedLabourRequest[]; error?: string }>(reqRes);
+        const workerJson = await readJsonResponse<unknown>(workerRes);
+
+        if (controller.signal.aborted) return;
+
+        if (!reqRes.ok) {
+          setLoadError(errorMessageFromResponse(reqRes, reqJson, "Failed to load labour requests"));
+          setRequests([]);
+        } else {
+          setRequests(reqJson?.requests ?? []);
+        }
+
+        if (!workerRes.ok) {
+          setLoadError((prev) => prev || errorMessageFromResponse(workerRes, workerJson, "Failed to load workers"));
+          setWorkers([]);
+        } else if (asWorkerList(workerJson)) {
+          setWorkers(workerJson);
+        } else {
+          setWorkers([]);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setLoadError("Failed to load calendar data");
+        setRequests([]);
+        setWorkers([]);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    run();
+    return () => controller.abort();
+  }, [siteId, from, to, reloadKey]);
 
   function openRequest(request: SerializedLabourRequest) {
     if (canCreate && request.status === "PENDING") {
       setModal({ mode: "edit", request });
     } else {
       setModal({ mode: "view", request });
+    }
+  }
+
+  async function handleReschedule(requestId: string, fromDate: string, toDate: string) {
+    const request = requests.find((r) => r.id === requestId);
+    if (!request) return;
+
+    const conflict = rescheduleConflictMessage(requests, request, fromDate, toDate);
+    if (conflict) {
+      setLoadError(conflict);
+      return;
+    }
+
+    const newDates = rescheduleRequestDate(request.dates, fromDate, toDate);
+    if (!newDates) return;
+
+    const previous = requests;
+    setRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, dates: newDates } : r))
+    );
+
+    const res = await fetch(`/api/labour-requests/${requestId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dates: newDates }),
+    });
+
+    if (!res.ok) {
+      setRequests(previous);
+      const json = await readJsonResponse<{ error?: string }>(res);
+      setLoadError(errorMessageFromBody(json, "Failed to reschedule request"));
     }
   }
 
@@ -415,7 +458,7 @@ export function LookAheadClient({
             <code className="rounded bg-red-100 px-1">npm run db:push</code> and restart{" "}
             <code className="rounded bg-red-100 px-1">npm run dev</code>.
           </p>
-          <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={load}>
+          <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={reload}>
             Retry
           </Button>
         </Card>
@@ -428,6 +471,9 @@ export function LookAheadClient({
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-3 rounded border border-accent bg-accent/15" /> Accepted
         </span>
+        {canCreate && (
+          <span>Drag pending requests to another day to reschedule (same worker cannot be double-booked)</span>
+        )}
       </div>
 
       {loading ? (
@@ -438,6 +484,8 @@ export function LookAheadClient({
           requests={requests}
           variant="site"
           canCreate={canCreate}
+          canDragRequest={(r) => canCreate && r.status === "PENDING"}
+          onReschedule={canCreate ? handleReschedule : undefined}
           onDayClick={(dateStr) => setModal({ mode: "create", seedDate: dateStr })}
           onRequestClick={openRequest}
         />
@@ -451,7 +499,7 @@ export function LookAheadClient({
           initial={"request" in modal ? modal.request : undefined}
           seedDate={"seedDate" in modal ? modal.seedDate : undefined}
           onClose={() => setModal(null)}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
     </div>

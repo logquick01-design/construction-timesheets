@@ -52,6 +52,18 @@ export function formatDateRange(dates: string[]): string {
   return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
 }
 
+/** Move one day slot from `fromDate` to `toDate`; returns null if invalid or unchanged. */
+export function rescheduleRequestDate(
+  dates: string[],
+  fromDate: string,
+  toDate: string
+): string[] | null {
+  if (fromDate === toDate || !dates.includes(fromDate) || dates.includes(toDate)) {
+    return null;
+  }
+  return uniqueDateStrings(dates.map((d) => (d === fromDate ? toDate : d)));
+}
+
 export function formatDateRangeDisplay(dates: string[]): string {
   const sorted = sortDateStrings(dates);
   if (sorted.length === 0) return "";

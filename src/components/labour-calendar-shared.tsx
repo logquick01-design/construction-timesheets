@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
 import type { LabourRequestStatus } from "@/lib/labour-types";
 import { cn, formatDate, parseDateInput } from "@/lib/utils";
@@ -17,6 +18,13 @@ export const STATUS_LABELS: Record<LabourRequestStatus, string> = {
   DENIED: "Denied",
   CANCELLED: "Cancelled",
 };
+
+type DragPayload = {
+  requestId: string;
+  sourceDate: string;
+};
+
+const DRAG_MIME = "application/x-labour-request";
 
 export function getWeekDays(weekStart: Date): Date[] {
   const days: Date[] = [];
@@ -38,18 +46,42 @@ export function getMondayOfWeek(reference: Date): Date {
 }
 
 export function requestsForDate(requests: SerializedLabourRequest[], dateStr: string) {
-  return requests.filter((r) => r.dates.includes(dateStr));
+  return requests.filter((r) => Array.isArray(r.dates) && r.dates.includes(dateStr));
+}
+
+function parseDragPayload(dataTransfer: DataTransfer): DragPayload | null {
+  const raw = dataTransfer.getData(DRAG_MIME);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as DragPayload;
+    if (parsed.requestId && parsed.sourceDate) return parsed;
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function LabourRequestCard({
   request,
+  dateStr,
   variant = "site",
+  draggable = false,
   onClick,
+  onDragStart,
+  onDragEnd,
+  isDragging = false,
 }: {
   request: SerializedLabourRequest;
+  dateStr: string;
   variant?: "site" | "admin-pending" | "admin-accepted";
+  draggable?: boolean;
   onClick?: () => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
 }) {
+  const skipClickRef = useRef(false);
+
   const workerLabel =
     request.workers.length === 0
       ? "No workers"
@@ -81,17 +113,39 @@ export function LabourRequestCard({
   return (
     <button
       type="button"
-      onClick={onClick}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        skipClickRef.current = true;
+        e.dataTransfer.setData(
+          DRAG_MIME,
+          JSON.stringify({ requestId: request.id, sourceDate: dateStr })
+        );
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.();
+      }}
+      onDragEnd={() => {
+        requestAnimationFrame(() => {
+          skipClickRef.current = false;
+        });
+        onDragEnd?.();
+      }}
+      onClick={() => {
+        if (skipClickRef.current) return;
+        onClick?.();
+      }}
       className={cn(
         "w-full rounded-lg border px-2 py-1.5 text-left text-xs transition hover:ring-2 hover:ring-accent/30",
+        draggable && "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-40",
         styles[request.status]
       )}
     >
       {variant !== "site" && (
         <p className="mb-0.5 truncate font-semibold">{request.siteName}</p>
       )}
-      <p className="truncate font-medium">{workerLabel}</p>
-      <p className="truncate text-[11px] opacity-80">{STATUS_LABELS[request.status]}</p>
+      <p className="truncate text-[11px] font-medium leading-tight">{workerLabel}</p>
+      <p className="truncate text-[10px] opacity-80">{STATUS_LABELS[request.status]}</p>
     </button>
   );
 }
@@ -103,6 +157,8 @@ export function WeekCalendarGrid({
   onDayClick,
   onRequestClick,
   canCreate,
+  canDragRequest,
+  onReschedule,
 }: {
   weekStart: Date;
   requests: SerializedLabourRequest[];
@@ -110,23 +166,49 @@ export function WeekCalendarGrid({
   onDayClick?: (dateStr: string) => void;
   onRequestClick?: (request: SerializedLabourRequest) => void;
   canCreate?: boolean;
+  canDragRequest?: (request: SerializedLabourRequest) => boolean;
+  onReschedule?: (requestId: string, fromDate: string, toDate: string) => void;
 }) {
   const days = getWeekDays(weekStart);
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+
+  function handleDrop(targetDate: string, e: React.DragEvent) {
+    e.preventDefault();
+    setDragOverDate(null);
+    const payload = parseDragPayload(e.dataTransfer);
+    if (!payload || payload.sourceDate === targetDate) return;
+    onReschedule?.(payload.requestId, payload.sourceDate, targetDate);
+  }
 
   return (
-    <div className="grid grid-cols-7 gap-2">
+    <div className="overflow-x-auto">
+      <div className="min-w-[640px] grid grid-cols-7 gap-2">
       {days.map((day, i) => {
         const dateStr = formatDate(day);
         const dayRequests = requestsForDate(requests, dateStr);
         const isWeekend = i >= 5;
+        const isDropTarget = dragOverDate === dateStr;
 
         return (
           <div
             key={dateStr}
+            onDragOver={(e) => {
+              if (!onReschedule) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOverDate(dateStr);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setDragOverDate((current) => (current === dateStr ? null : current));
+            }}
+            onDrop={(e) => handleDrop(dateStr, e)}
             className={cn(
-              "min-h-32 rounded-xl border border-border bg-surface p-2",
-              isWeekend && "bg-fill/40"
+              "min-h-32 rounded-xl border border-border bg-surface p-2 transition-colors",
+              isWeekend && "bg-fill/40",
+              isDropTarget && "border-accent bg-accent/5 ring-2 ring-accent/25"
             )}
           >
             <div className="mb-2 flex items-center justify-between gap-1">
@@ -153,14 +235,23 @@ export function WeekCalendarGrid({
                 <LabourRequestCard
                   key={`${r.id}-${dateStr}`}
                   request={r}
+                  dateStr={dateStr}
                   variant={variant}
+                  draggable={Boolean(canDragRequest?.(r) && onReschedule)}
+                  isDragging={draggingKey === `${r.id}-${dateStr}`}
                   onClick={() => onRequestClick?.(r)}
+                  onDragStart={() => setDraggingKey(`${r.id}-${dateStr}`)}
+                  onDragEnd={() => setDraggingKey(null)}
                 />
               ))}
+              {dayRequests.length === 0 && isDropTarget && (
+                <p className="py-2 text-center text-[11px] text-muted">Drop here</p>
+              )}
             </div>
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

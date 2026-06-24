@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
-import { formatDateRangeDisplay } from "@/lib/labour-dates";
+import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
+import { formatDateRangeDisplay, rescheduleRequestDate } from "@/lib/labour-dates";
 import { formatDate } from "@/lib/utils";
 import { Button, Card, Input, Label, Select } from "./ui";
-import { errorMessageFromBody, readJsonResponse } from "@/lib/fetch-json";
+import { errorMessageFromBody, errorMessageFromResponse, readJsonResponse } from "@/lib/fetch-json";
 import type { LabourRequestStatus } from "@/lib/labour-types";
 import {
   addDays,
@@ -37,8 +38,18 @@ function BookingStatusModal({
     availableStatuses[0]?.value ?? request.status
   );
   const [message, setMessage] = useState("");
+  const [hoursPerDay, setHoursPerDay] = useState(request.workers[0]?.hoursPerDay ?? 8);
   const [saving, setSaving] = useState(false);
+  const [hoursSaving, setHoursSaving] = useState(false);
   const [error, setError] = useState("");
+  const [hoursError, setHoursError] = useState("");
+
+  const currentHours = request.workers[0]?.hoursPerDay ?? 8;
+  const canEditHours = request.status === "PENDING" || request.status === "ACCEPTED";
+
+  useEffect(() => {
+    setHoursPerDay(currentHours);
+  }, [request.id, currentHours]);
 
   async function applyStatus(status: LabourRequestStatus, statusMessage?: string) {
     setError("");
@@ -67,6 +78,33 @@ function BookingStatusModal({
       onClose();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveHours(e: React.FormEvent) {
+    e.preventDefault();
+    setHoursError("");
+
+    if (hoursPerDay === currentHours) {
+      setHoursError("Change hours before saving");
+      return;
+    }
+
+    setHoursSaving(true);
+    try {
+      const res = await fetch(`/api/labour-requests/${request.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hoursPerDay }),
+      });
+      if (!res.ok) {
+        const json = await readJsonResponse<{ error?: string }>(res);
+        setHoursError(errorMessageFromBody(json, "Failed to update hours"));
+        return;
+      }
+      onUpdated();
+    } finally {
+      setHoursSaving(false);
     }
   }
 
@@ -119,6 +157,35 @@ function BookingStatusModal({
             </ul>
           </div>
         </div>
+
+        {canEditHours && (
+          <form onSubmit={saveHours} className="mt-4 space-y-3 border-t border-border-light pt-4">
+            <div>
+              <Label>Hours per day</Label>
+              <Input
+                type="number"
+                min={0.5}
+                max={24}
+                step={0.5}
+                value={hoursPerDay}
+                onChange={(e) => setHoursPerDay(Number(e.target.value))}
+              />
+              <p className="mt-1 text-xs text-muted">
+                Applies to all workers on this booking. The site manager will be notified when you save.
+              </p>
+            </div>
+            {hoursError && <p className="text-sm text-red-600">{hoursError}</p>}
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="secondary"
+                disabled={hoursSaving || hoursPerDay === currentHours}
+              >
+                {hoursSaving ? "Saving…" : "Save hours"}
+              </Button>
+            </div>
+          </form>
+        )}
 
         <form onSubmit={updateStatus} className="mt-4 space-y-3 border-t border-border-light pt-4">
           {isPending && (
@@ -193,42 +260,88 @@ export function AdminLabourCalendarClient() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<SerializedLabourRequest | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const weekEnd = addDays(weekStart, 6);
   const from = formatDate(weekStart);
   const to = formatDate(weekEnd);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const params = new URLSearchParams({
-        from,
-        to,
-        status: "PENDING,ACCEPTED",
-      });
-
-      const reqRes = await fetch(`/api/labour-requests?${params}`);
-
-      const reqJson = await readJsonResponse<{ requests?: SerializedLabourRequest[]; error?: string }>(reqRes);
-
-      if (!reqRes.ok) {
-        setLoadError(errorMessageFromBody(reqJson, "Failed to load labour requests"));
-        setRequests([]);
-      } else {
-        setRequests(reqJson?.requests ?? []);
-      }
-    } catch {
-      setLoadError("Failed to load labour calendar");
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [from, to]);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const controller = new AbortController();
+
+    async function run() {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const params = new URLSearchParams({
+          from,
+          to,
+          status: "PENDING,ACCEPTED",
+        });
+
+        const reqRes = await fetch(`/api/labour-requests?${params}`, {
+          signal: controller.signal,
+        });
+
+        const reqJson = await readJsonResponse<{ requests?: SerializedLabourRequest[]; error?: string }>(reqRes);
+
+        if (controller.signal.aborted) return;
+
+        if (!reqRes.ok) {
+          setLoadError(errorMessageFromResponse(reqRes, reqJson, "Failed to load labour requests"));
+          setRequests([]);
+        } else {
+          setRequests(reqJson?.requests ?? []);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setLoadError("Failed to load labour calendar");
+        setRequests([]);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    run();
+    return () => controller.abort();
+  }, [from, to, reloadKey]);
+
+  async function handleReschedule(requestId: string, fromDate: string, toDate: string) {
+    const request = requests.find((r) => r.id === requestId);
+    if (!request) return;
+
+    const conflict = rescheduleConflictMessage(requests, request, fromDate, toDate);
+    if (conflict) {
+      setLoadError(conflict);
+      return;
+    }
+
+    const newDates = rescheduleRequestDate(request.dates, fromDate, toDate);
+    if (!newDates) return;
+
+    const previous = requests;
+    setRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, dates: newDates } : r))
+    );
+
+    const res = await fetch(`/api/labour-requests/${requestId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dates: newDates }),
+    });
+
+    if (!res.ok) {
+      setRequests(previous);
+      const json = await readJsonResponse<{ error?: string }>(res);
+      setLoadError(errorMessageFromBody(json, "Failed to reschedule booking"));
+      return;
+    }
+
+    reload();
+  }
 
   const pendingCount = requests.filter((r) => r.status === "PENDING").length;
 
@@ -262,7 +375,7 @@ export function AdminLabourCalendarClient() {
       {loadError && (
         <Card className="border-red-200 bg-red-50">
           <p className="text-sm text-red-900">{loadError}</p>
-          <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={load}>
+          <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={reload}>
             Retry
           </Button>
         </Card>
@@ -283,6 +396,7 @@ export function AdminLabourCalendarClient() {
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-3 rounded border border-accent bg-accent/15" /> Accepted
         </span>
+        <span>Drag bookings to another day to reschedule (same worker cannot be double-booked)</span>
       </div>
 
       {loading ? (
@@ -292,6 +406,8 @@ export function AdminLabourCalendarClient() {
           weekStart={weekStart}
           requests={requests}
           variant="admin-pending"
+          canDragRequest={(r) => r.status === "PENDING" || r.status === "ACCEPTED"}
+          onReschedule={handleReschedule}
           onRequestClick={setSelected}
         />
       )}
@@ -299,9 +415,9 @@ export function AdminLabourCalendarClient() {
       {selected && (
         <BookingStatusModal
           key={selected.id}
-          request={selected}
+          request={requests.find((r) => r.id === selected.id) ?? selected}
           onClose={() => setSelected(null)}
-          onUpdated={load}
+          onUpdated={reload}
         />
       )}
     </div>

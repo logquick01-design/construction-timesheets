@@ -19,6 +19,16 @@ export function errorMessageFromBody(body: unknown, fallback: string): string {
   return fallback;
 }
 
+export function errorMessageFromResponse(res: Response, body: unknown, fallback: string): string {
+  if (!res.ok && body == null) {
+    if (res.status >= 500) {
+      return "Server error — try restarting the dev server (rm -rf .next && npm run dev)";
+    }
+    return fallback;
+  }
+  return errorMessageFromBody(body, fallback);
+}
+
 export function asWorkerList(body: unknown): body is Array<{
   id: string;
   name: string;

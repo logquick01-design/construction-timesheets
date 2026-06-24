@@ -1,6 +1,18 @@
 import type { LabourRequestStatus } from "./labour-types";
 import { formatDateRangeDisplay } from "./labour-dates";
 
+export function labourUpdateNotificationContent(changes: string[]): {
+  type: string;
+  title: string;
+  message: string;
+} {
+  return {
+    type: "LABOUR_REQUEST_UPDATED",
+    title: "Labour booking updated",
+    message: changes.join(". ") + (changes.length ? "." : ""),
+  };
+}
+
 export function labourStatusNotificationContent(
   status: LabourRequestStatus,
   message?: string | null
@@ -37,8 +49,11 @@ export function labourNotificationMeta(input: {
   labourRequestId: string;
   workerNames: string[];
   dates: string[];
-  previousStatus: LabourRequestStatus;
-  newStatus: LabourRequestStatus;
+  previousStatus?: LabourRequestStatus;
+  newStatus?: LabourRequestStatus;
+  previousHours?: number;
+  newHours?: number;
+  previousDates?: string[];
 }) {
   return {
     labourRequestId: input.labourRequestId,
@@ -47,5 +62,10 @@ export function labourNotificationMeta(input: {
     dateRange: formatDateRangeDisplay(input.dates),
     previousStatus: input.previousStatus,
     newStatus: input.newStatus,
+    previousHours: input.previousHours,
+    newHours: input.newHours,
+    previousDateRange: input.previousDates
+      ? formatDateRangeDisplay(input.previousDates)
+      : undefined,
   };
 }
