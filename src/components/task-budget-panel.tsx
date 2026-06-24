@@ -103,7 +103,7 @@ export function TaskBudgetCharts({
 
           return (
             <Card key={entry.taskId}>
-              <div className="mb-1 text-sm font-medium text-ink">{task.name}</div>
+              <div className="mb-1 text-base font-medium text-ink">{task.name}</div>
               <div className="mb-3 text-xs text-muted">
                 {task.reference} · {task.category.name}
               </div>
