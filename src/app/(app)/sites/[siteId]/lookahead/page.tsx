@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { canCreateLabourRequest } from "@/lib/permissions";
+import { loadSiteFeatures, isSiteFeatureEnabled } from "@/lib/site-features";
 import { LookAheadClient } from "@/components/look-ahead-client";
 
 export default async function SiteLookAheadPage({
@@ -9,6 +11,11 @@ export default async function SiteLookAheadPage({
 }) {
   const { siteId } = await params;
   const session = await requireSession();
+  const features = await loadSiteFeatures(siteId);
+
+  if (!isSiteFeatureEnabled(features, "bookingCalendar")) {
+    redirect(`/sites/${siteId}/dashboard`);
+  }
 
   return (
     <LookAheadClient

@@ -6,6 +6,12 @@ import { labourRequestInclude, serializeLabourRequest } from "@/lib/labour-reque
 import { prisma } from "@/lib/prisma";
 import { endOfDay, parseDateInput, startOfDay } from "@/lib/utils";
 import { isLabourRequestStatus } from "@/lib/labour-types";
+import {
+  isSiteFeatureEnabled,
+  loadSiteFeatures,
+  loadSiteFeaturesMap,
+  mergeSiteFeatures,
+} from "@/lib/site-features";
 import type { LabourRequestStatus } from "@prisma/client";
 import { z } from "zod";
 
@@ -39,6 +45,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    if (siteId) {
+      const features = await loadSiteFeatures(siteId);
+      if (!isSiteFeatureEnabled(features, "bookingCalendar")) {
+        return NextResponse.json({ requests: [] });
+      }
+    }
+
     if (!siteId && !canReviewLabourRequests(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -65,8 +78,20 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "desc" },
     });
 
+    let filtered = requests;
+    if (!siteId) {
+      const siteIds = [...new Set(requests.map((r) => r.siteId))];
+      const featuresBySite = await loadSiteFeaturesMap(siteIds);
+      filtered = requests.filter((r) =>
+        isSiteFeatureEnabled(
+          featuresBySite.get(r.siteId) ?? mergeSiteFeatures(null),
+          "bookingCalendar"
+        )
+      );
+    }
+
     return NextResponse.json({
-      requests: requests.map(serializeLabourRequest),
+      requests: filtered.map(serializeLabourRequest),
     });
   } catch (error) {
     console.error("GET /api/labour-requests failed:", error);
@@ -96,6 +121,11 @@ export async function POST(request: Request) {
 
     if (!canAccessSite(session, siteId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const features = await loadSiteFeatures(siteId);
+    if (!isSiteFeatureEnabled(features, "bookingCalendar")) {
+      return NextResponse.json({ error: "Booking calendar is disabled for this site" }, { status: 403 });
     }
 
     const uniqueWorkerIds = [...new Set(workerIds)];

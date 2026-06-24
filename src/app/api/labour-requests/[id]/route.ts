@@ -16,6 +16,7 @@ import { canCreateLabourRequest, canReviewLabourRequests } from "@/lib/permissio
 import { canCancelLabourRequest } from "@/lib/labour-types";
 import { prisma } from "@/lib/prisma";
 import { startOfDay } from "@/lib/utils";
+import { isSiteFeatureEnabled, loadSiteFeatures } from "@/lib/site-features";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -45,13 +46,18 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const features = await loadSiteFeatures(existing.siteId);
+  const isAdmin = canReviewLabourRequests(session);
+  if (!isAdmin && !isSiteFeatureEnabled(features, "bookingCalendar")) {
+    return NextResponse.json({ error: "Booking calendar is disabled for this site" }, { status: 403 });
+  }
+
   const parsed = updateSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const { workerIds, dates, hoursPerDay, notes } = parsed.data;
-  const isAdmin = canReviewLabourRequests(session);
   const isPending = existing.status === "PENDING";
   const isAccepted = existing.status === "ACCEPTED";
 
@@ -198,6 +204,12 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!canAccessSite(session, existing.siteId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  const features = await loadSiteFeatures(existing.siteId);
+  if (!isSiteFeatureEnabled(features, "bookingCalendar")) {
+    return NextResponse.json({ error: "Booking calendar is disabled for this site" }, { status: 403 });
+  }
+
   if (!canCancelLabourRequest(existing.status)) {
     return NextResponse.json({ error: "This request cannot be cancelled" }, { status: 400 });
   }
