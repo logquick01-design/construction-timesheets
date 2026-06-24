@@ -80,7 +80,12 @@ export function TaskBudgetCharts({
 
   return (
     <div className="space-y-4">
-      <h2 className="font-semibold text-ink">Task budget usage</h2>
+      <div>
+        <h2 className="font-semibold text-ink">Task budget usage</h2>
+        <p className="mt-1 text-sm text-muted">
+          Based on all logged hours for this project, not the date filter above.
+        </p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {visibleBudgets.map((entry) => {
           const task = taskMap.get(entry.taskId);

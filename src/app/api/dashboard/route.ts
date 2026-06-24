@@ -120,6 +120,18 @@ export async function GET(request: Request) {
     return row;
   });
 
+  let allTimeHoursByTaskId: Record<string, number> | undefined;
+  if (siteId) {
+    const hourTotals = await prisma.timesheetEntry.groupBy({
+      by: ["taskId"],
+      where: { siteId },
+      _sum: { hours: true },
+    });
+    allTimeHoursByTaskId = Object.fromEntries(
+      hourTotals.map((row) => [row.taskId, row._sum.hours ?? 0])
+    );
+  }
+
   return NextResponse.json({
     sites,
     categories,
@@ -130,5 +142,6 @@ export async function GET(request: Request) {
       .map(([taskId, task]) => ({ taskId, ...task }))
       .sort((a, b) => b.hours - a.hours),
     grandTotal: entries.reduce((s, e) => s + e.hours, 0),
+    allTimeHoursByTaskId,
   });
 }

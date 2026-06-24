@@ -67,6 +67,7 @@ export function DashboardClient({
     tasks: { taskId: string; name: string; reference: string; hours: number }[];
     grandTotal: number;
     totalBySite: Record<string, number>;
+    allTimeHoursByTaskId?: Record<string, number>;
   } | null>(null);
 
   useEffect(() => {
@@ -178,9 +179,7 @@ export function DashboardClient({
   }, [load]);
 
   const catNames = categories.map((c) => c.name);
-  const hoursByTaskId = Object.fromEntries(
-    (data?.tasks ?? []).map((task) => [task.taskId, task.hours])
-  );
+  const taskBudgetHoursByTaskId = data?.allTimeHoursByTaskId ?? {};
 
   const filtersCard = (
     <Card className={`grid gap-4 sm:grid-cols-2 ${lockedSiteId ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
@@ -316,7 +315,7 @@ export function DashboardClient({
         <TaskBudgetCharts
           taskBudgets={taskBudgets}
           siteTasks={siteTasks}
-          hoursByTaskId={hoursByTaskId}
+          hoursByTaskId={taskBudgetHoursByTaskId}
         />
       )}
     </>
