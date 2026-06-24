@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Cell,
   Pie,
@@ -16,8 +16,13 @@ export type SiteTask = {
   id: string;
   name: string;
   reference: string;
-  category: { name: string };
+  categoryId: string;
+  category: { id: string; name: string };
 };
+
+function getTaskCategoryId(task: SiteTask): string {
+  return task.categoryId ?? task.category.id;
+}
 
 const PIE_COLORS = {
   used: "#c4783b",
@@ -143,15 +148,18 @@ export function TaskBudgetCharts({
 export function TaskBudgetSettingsPanel({
   taskBudgets,
   siteTasks,
+  categories,
   onSave,
   onBack,
 }: {
   taskBudgets: TaskBudgetEntry[];
   siteTasks: SiteTask[];
+  categories: { id: string; name: string }[];
   onSave: (next: TaskBudgetEntry[]) => Promise<boolean>;
   onBack: () => void;
 }) {
   const [draft, setDraft] = useState(taskBudgets);
+  const [newCategoryId, setNewCategoryId] = useState("");
   const [newTaskId, setNewTaskId] = useState("");
   const [newBudgetHours, setNewBudgetHours] = useState("");
   const [saving, setSaving] = useState(false);
@@ -160,9 +168,47 @@ export function TaskBudgetSettingsPanel({
     setDraft(taskBudgets);
   }, [taskBudgets]);
 
-  const configuredIds = new Set(draft.map((entry) => entry.taskId));
-  const availableTasks = siteTasks.filter((task) => !configuredIds.has(task.id));
-  const taskMap = new Map(siteTasks.map((task) => [task.id, task]));
+  const configuredIds = useMemo(() => new Set(draft.map((entry) => entry.taskId)), [draft]);
+  const availableTasks = useMemo(
+    () => siteTasks.filter((task) => !configuredIds.has(task.id)),
+    [siteTasks, configuredIds]
+  );
+  const taskMap = useMemo(() => new Map(siteTasks.map((task) => [task.id, task])), [siteTasks]);
+
+  const availableCategoryIds = useMemo(
+    () => new Set(availableTasks.map(getTaskCategoryId)),
+    [availableTasks]
+  );
+
+  const availableCategories = useMemo(() => {
+    const fromDashboard = categories.filter((category) => availableCategoryIds.has(category.id));
+    if (fromDashboard.length > 0) return fromDashboard;
+
+    const seen = new Set<string>();
+    const options: { id: string; name: string }[] = [];
+    for (const task of availableTasks) {
+      const categoryId = getTaskCategoryId(task);
+      if (seen.has(categoryId)) continue;
+      seen.add(categoryId);
+      options.push({ id: categoryId, name: task.category.name });
+    }
+    return options;
+  }, [categories, availableTasks, availableCategoryIds]);
+
+  const filteredAvailableTasks = useMemo(
+    () =>
+      newCategoryId
+        ? availableTasks.filter((task) => getTaskCategoryId(task) === newCategoryId)
+        : [],
+    [availableTasks, newCategoryId]
+  );
+
+  useEffect(() => {
+    if (newCategoryId && !availableCategories.some((category) => category.id === newCategoryId)) {
+      setNewCategoryId("");
+      setNewTaskId("");
+    }
+  }, [availableCategories, newCategoryId]);
 
   async function persist(next: TaskBudgetEntry[]) {
     setSaving(true);
@@ -200,6 +246,7 @@ export function TaskBudgetSettingsPanel({
     const next = [...draft, { taskId: newTaskId, budgetHours, enabled: true }];
     const saved = await persist(next);
     if (saved) {
+      setNewCategoryId("");
       setNewTaskId("");
       setNewBudgetHours("");
     }
@@ -299,16 +346,36 @@ export function TaskBudgetSettingsPanel({
         {availableTasks.length > 0 ? (
           <div className="border-t border-border-light pt-4">
             <h3 className="mb-3 text-sm font-medium text-ink">Add a task</h3>
-            <div className="grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_8rem_auto] sm:items-end">
+              <div>
+                <Label>Category</Label>
+                <Select
+                  value={newCategoryId}
+                  disabled={saving}
+                  onChange={(e) => {
+                    setNewCategoryId(e.target.value);
+                    setNewTaskId("");
+                  }}
+                >
+                  <option value="">Select category…</option>
+                  {availableCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <div>
                 <Label>Task</Label>
                 <Select
                   value={newTaskId}
-                  disabled={saving}
+                  disabled={saving || !newCategoryId}
                   onChange={(e) => setNewTaskId(e.target.value)}
                 >
-                  <option value="">Select task…</option>
-                  {availableTasks.map((task) => (
+                  <option value="">
+                    {newCategoryId ? "Select task…" : "Select category first"}
+                  </option>
+                  {filteredAvailableTasks.map((task) => (
                     <option key={task.id} value={task.id}>
                       {task.name} ({task.reference})
                     </option>
@@ -335,6 +402,11 @@ export function TaskBudgetSettingsPanel({
                 Add
               </Button>
             </div>
+            {newCategoryId && filteredAvailableTasks.length === 0 && (
+              <p className="mt-2 text-sm text-muted">
+                All tasks in this category already have budgets configured.
+              </p>
+            )}
           </div>
         ) : (
           draft.length === 0 && (

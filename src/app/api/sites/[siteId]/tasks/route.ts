@@ -20,7 +20,8 @@ export async function GET(_request: Request, context: RouteContext) {
       id: true,
       name: true,
       reference: true,
-      category: { select: { name: true } },
+      categoryId: true,
+      category: { select: { id: true, name: true } },
     },
   });
 

@@ -326,6 +326,7 @@ export function DashboardClient({
       <TaskBudgetSettingsPanel
         taskBudgets={taskBudgets}
         siteTasks={siteTasks}
+        categories={categories}
         onSave={saveTaskBudgets}
         onBack={() => setSettingsView("widgets")}
       />
