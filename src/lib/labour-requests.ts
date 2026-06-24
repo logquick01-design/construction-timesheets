@@ -10,7 +10,7 @@ export const labourRequestInclude = {
   workers: {
     include: {
       worker: {
-        include: { company: { select: { name: true } } },
+        include: { company: { select: { id: true, name: true } } },
       },
     },
   },
@@ -39,6 +39,7 @@ export function serializeLabourRequest(r: LabourRequestRecord) {
       name: w.worker.name,
       trade: w.worker.trade,
       hoursPerDay: w.hoursPerDay,
+      companyId: w.worker.company?.id ?? null,
       companyName: w.worker.company?.name ?? null,
     })),
   };

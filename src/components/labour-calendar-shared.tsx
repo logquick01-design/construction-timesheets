@@ -3,7 +3,13 @@
 import { useRef, useState } from "react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
 import type { LabourRequestStatus } from "@/lib/labour-types";
+import { DEFAULT_LABOUR_CALENDAR_WEEKS } from "@/lib/labour-calendar-preferences";
+import {
+  cardBookingColorTags,
+  type LabourCalendarColorPrefs,
+} from "@/lib/labour-calendar-colors";
 import { cn, formatDate, parseDateInput } from "@/lib/utils";
+import { LabourBookingColorTags } from "./labour-color-dot";
 
 export type WorkerOption = {
   id: string;
@@ -31,6 +37,16 @@ export function getWeekDays(weekStart: Date): Date[] {
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+export function getCalendarDays(rangeStart: Date, weeks = DEFAULT_LABOUR_CALENDAR_WEEKS): Date[] {
+  const days: Date[] = [];
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = new Date(rangeStart);
+    d.setDate(rangeStart.getDate() + i);
     days.push(d);
   }
   return days;
@@ -70,6 +86,7 @@ export function LabourRequestCard({
   onDragStart,
   onDragEnd,
   isDragging = false,
+  colorPrefs,
 }: {
   request: SerializedLabourRequest;
   dateStr: string;
@@ -79,6 +96,7 @@ export function LabourRequestCard({
   onDragStart?: () => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
+  colorPrefs?: LabourCalendarColorPrefs;
 }) {
   const skipClickRef = useRef(false);
 
@@ -88,6 +106,13 @@ export function LabourRequestCard({
       : request.workers.length === 1
         ? request.workers[0].name
         : `${request.workers.length} workers`;
+
+  const bookingTags = colorPrefs
+    ? cardBookingColorTags(
+        request.workers.map((w) => ({ workerId: w.workerId, companyId: w.companyId })),
+        colorPrefs
+      )
+    : { companyTags: [], workerTags: [] };
 
   const styles = {
     site: {
@@ -144,7 +169,14 @@ export function LabourRequestCard({
       {variant !== "site" && (
         <p className="mb-0.5 truncate font-semibold">{request.siteName}</p>
       )}
-      <p className="truncate text-[11px] font-medium leading-tight">{workerLabel}</p>
+      <p className="flex items-center gap-1 truncate text-[11px] font-medium leading-tight">
+        <LabourBookingColorTags
+          companyTags={bookingTags.companyTags}
+          workerTags={bookingTags.workerTags}
+          size="xs"
+        />
+        <span className="truncate">{workerLabel}</span>
+      </p>
       <p className="truncate text-[10px] opacity-80">{STATUS_LABELS[request.status]}</p>
     </button>
   );
@@ -152,6 +184,7 @@ export function LabourRequestCard({
 
 export function WeekCalendarGrid({
   weekStart,
+  weeksShown,
   requests,
   variant = "site",
   onDayClick,
@@ -159,8 +192,10 @@ export function WeekCalendarGrid({
   canCreate,
   canDragRequest,
   onReschedule,
+  colorPrefs,
 }: {
   weekStart: Date;
+  weeksShown: number;
   requests: SerializedLabourRequest[];
   variant?: "site" | "admin-pending" | "admin-accepted";
   onDayClick?: (dateStr: string) => void;
@@ -168,11 +203,17 @@ export function WeekCalendarGrid({
   canCreate?: boolean;
   canDragRequest?: (request: SerializedLabourRequest) => boolean;
   onReschedule?: (requestId: string, fromDate: string, toDate: string) => void;
+  colorPrefs?: LabourCalendarColorPrefs;
 }) {
-  const days = getWeekDays(weekStart);
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
+
+  const weeks: Date[][] = [];
+  const allDays = getCalendarDays(weekStart, weeksShown);
+  for (let w = 0; w < weeksShown; w++) {
+    weeks.push(allDays.slice(w * 7, w * 7 + 7));
+  }
 
   function handleDrop(targetDate: string, e: React.DragEvent) {
     e.preventDefault();
@@ -183,9 +224,16 @@ export function WeekCalendarGrid({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[640px] grid grid-cols-7 gap-2">
-      {days.map((day, i) => {
+    <div className="overflow-x-auto space-y-4">
+      {weeks.map((weekDays, weekIndex) => (
+        <div key={weekIndex}>
+          {weeksShown > 1 && (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              {formatWeekLabel(addDays(weekStart, weekIndex * 7), 1)}
+            </p>
+          )}
+          <div className="min-w-[640px] grid grid-cols-7 gap-2">
+            {weekDays.map((day, i) => {
         const dateStr = formatDate(day);
         const dayRequests = requestsForDate(requests, dateStr);
         const isWeekend = i >= 5;
@@ -239,6 +287,7 @@ export function WeekCalendarGrid({
                   variant={variant}
                   draggable={Boolean(canDragRequest?.(r) && onReschedule)}
                   isDragging={draggingKey === `${r.id}-${dateStr}`}
+                  colorPrefs={colorPrefs}
                   onClick={() => onRequestClick?.(r)}
                   onDragStart={() => setDraggingKey(`${r.id}-${dateStr}`)}
                   onDragEnd={() => setDraggingKey(null)}
@@ -250,15 +299,16 @@ export function WeekCalendarGrid({
             </div>
           </div>
         );
-      })}
-      </div>
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-export function formatWeekLabel(weekStart: Date): string {
-  const end = new Date(weekStart);
-  end.setDate(weekStart.getDate() + 6);
+export function formatWeekLabel(weekStart: Date, weeks = DEFAULT_LABOUR_CALENDAR_WEEKS): string {
+  const end = addDays(weekStart, weeks * 7 - 1);
   const fmt = (d: Date) =>
     `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
   return `${fmt(weekStart)} – ${fmt(end)}`;

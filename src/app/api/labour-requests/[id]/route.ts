@@ -13,6 +13,7 @@ import {
 } from "@/lib/labour-notifications";
 import { labourRequestInclude, serializeLabourRequest } from "@/lib/labour-requests";
 import { canCreateLabourRequest, canReviewLabourRequests } from "@/lib/permissions";
+import { canCancelLabourRequest } from "@/lib/labour-types";
 import { prisma } from "@/lib/prisma";
 import { startOfDay } from "@/lib/utils";
 import { z } from "zod";
@@ -197,8 +198,8 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!canAccessSite(session, existing.siteId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (existing.status !== "PENDING") {
-    return NextResponse.json({ error: "Only pending requests can be cancelled" }, { status: 400 });
+  if (!canCancelLabourRequest(existing.status)) {
+    return NextResponse.json({ error: "This request cannot be cancelled" }, { status: 400 });
   }
 
   await prisma.labourRequest.update({

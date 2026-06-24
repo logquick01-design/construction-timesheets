@@ -1,17 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
 import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
 import { formatDateRangeDisplay, rescheduleRequestDate } from "@/lib/labour-dates";
 import { formatDate } from "@/lib/utils";
-import { Button, Card, Input, Label, Select } from "./ui";
+import { Button, Card, Input, Label, PageHeader, Select } from "./ui";
 import { errorMessageFromBody, errorMessageFromResponse, readJsonResponse } from "@/lib/fetch-json";
 import type { LabourRequestStatus } from "@/lib/labour-types";
+import { LabourCalendarToolbar } from "./labour-calendar-toolbar";
+import { LabourCalendarSettings } from "./labour-calendar-settings";
+import { useAdminLabourColorEntities } from "./use-admin-labour-color-entities";
+import { useLabourCalendarWeeks } from "./use-labour-calendar-weeks";
+import { useLabourCalendarColors } from "./use-labour-calendar-colors";
 import {
   addDays,
-  formatWeekLabel,
   getMondayOfWeek,
   STATUS_LABELS,
   WeekCalendarGrid,
@@ -118,6 +122,7 @@ function BookingStatusModal({
   }
 
   const isPending = request.status === "PENDING";
+  const isAccepted = request.status === "ACCEPTED";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -188,6 +193,18 @@ function BookingStatusModal({
         )}
 
         <form onSubmit={updateStatus} className="mt-4 space-y-3 border-t border-border-light pt-4">
+          {isAccepted && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="danger"
+                disabled={saving}
+                onClick={() => applyStatus("CANCELLED", message)}
+              >
+                Cancel booking
+              </Button>
+            </div>
+          )}
           {isPending && (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -254,15 +271,24 @@ function BookingStatusModal({
   );
 }
 
-export function AdminLabourCalendarClient() {
+export function AdminLabourCalendarClient({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
   const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()));
+  const { weeks: weeksShown, setWeeks: setWeeksShown } = useLabourCalendarWeeks();
+  const { colors, toggleCompanyColor, toggleWorkerColor } = useLabourCalendarColors();
+  const { entities: colorEntities } = useAdminLabourColorEntities();
   const [requests, setRequests] = useState<SerializedLabourRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<SerializedLabourRequest | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const weekEnd = addDays(weekStart, 6);
+  const weekEnd = addDays(weekStart, weeksShown * 7 - 1);
   const from = formatDate(weekStart);
   const to = formatDate(weekEnd);
 
@@ -307,7 +333,7 @@ export function AdminLabourCalendarClient() {
 
     run();
     return () => controller.abort();
-  }, [from, to, reloadKey]);
+  }, [from, to, reloadKey, weeksShown]);
 
   async function handleReschedule(requestId: string, fromDate: string, toDate: string) {
     const request = requests.find((r) => r.id === requestId);
@@ -347,30 +373,26 @@ export function AdminLabourCalendarClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekStart((w) => addDays(w, -7))}
-            aria-label="Previous week"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="min-w-28 text-center text-sm font-medium">{formatWeekLabel(weekStart)}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekStart((w) => addDays(w, 7))}
-            aria-label="Next week"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setWeekStart(getMondayOfWeek(new Date()))}>
-          Today
-        </Button>
-      </div>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        action={
+          <LabourCalendarSettings
+            weeks={weeksShown}
+            onWeeksChange={setWeeksShown}
+            colorEntities={colorEntities}
+            colors={colors}
+            onCompanyColorToggle={toggleCompanyColor}
+            onWorkerColorToggle={toggleWorkerColor}
+          />
+        }
+      />
+
+      <LabourCalendarToolbar
+        weekStart={weekStart}
+        onWeekStartChange={setWeekStart}
+        weeksShown={weeksShown}
+      />
 
       {loadError && (
         <Card className="border-red-200 bg-red-50">
@@ -404,7 +426,9 @@ export function AdminLabourCalendarClient() {
       ) : (
         <WeekCalendarGrid
           weekStart={weekStart}
+          weeksShown={weeksShown}
           requests={requests}
+          colorPrefs={colors}
           variant="admin-pending"
           canDragRequest={(r) => r.status === "PENDING" || r.status === "ACCEPTED"}
           onReschedule={handleReschedule}

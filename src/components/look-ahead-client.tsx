@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
 import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
 import {
@@ -12,11 +12,16 @@ import {
   uniqueDateStrings,
 } from "@/lib/labour-dates";
 import { formatDate } from "@/lib/utils";
-import { Button, Card, Input, Label } from "./ui";
+import { buildColorEntitiesFromWorkers } from "@/lib/labour-calendar-colors";
+import { Button, Card, Input, Label, PageHeader } from "./ui";
 import { asWorkerList, errorMessageFromBody, errorMessageFromResponse, readJsonResponse } from "@/lib/fetch-json";
+import { canCancelLabourRequest } from "@/lib/labour-types";
+import { LabourCalendarToolbar } from "./labour-calendar-toolbar";
+import { LabourCalendarSettings } from "./labour-calendar-settings";
+import { useLabourCalendarWeeks } from "./use-labour-calendar-weeks";
+import { useLabourCalendarColors } from "./use-labour-calendar-colors";
 import {
   addDays,
-  formatWeekLabel,
   getMondayOfWeek,
   STATUS_LABELS,
   WeekCalendarGrid,
@@ -31,6 +36,7 @@ function RequestFormModal({
   mode,
   initial,
   seedDate,
+  canCreate,
   onClose,
   onSaved,
 }: {
@@ -39,6 +45,7 @@ function RequestFormModal({
   mode: FormMode;
   initial?: SerializedLabourRequest;
   seedDate?: string;
+  canCreate: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -128,8 +135,12 @@ function RequestFormModal({
   }
 
   async function handleCancel() {
-    if (!initial || mode !== "edit") return;
-    if (!confirm("Cancel this pending request?")) return;
+    if (!initial || !canCreate || !canCancelLabourRequest(initial.status)) return;
+    const prompt =
+      initial.status === "ACCEPTED"
+        ? "Cancel this accepted booking? Workers will be removed from the calendar."
+        : "Cancel this pending request?";
+    if (!confirm(prompt)) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/labour-requests/${initial.id}`, { method: "DELETE" });
@@ -279,7 +290,7 @@ function RequestFormModal({
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex flex-wrap justify-end gap-2">
-            {mode === "edit" && initial?.status === "PENDING" && (
+            {canCreate && initial && canCancelLabourRequest(initial.status) && (
               <Button type="button" variant="danger" onClick={handleCancel} disabled={saving}>
                 Cancel request
               </Button>
@@ -302,11 +313,17 @@ function RequestFormModal({
 export function LookAheadClient({
   siteId,
   canCreate,
+  title,
+  subtitle,
 }: {
   siteId: string;
   canCreate: boolean;
+  title: string;
+  subtitle?: string;
 }) {
   const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()));
+  const { weeks: weeksShown, setWeeks: setWeeksShown } = useLabourCalendarWeeks();
+  const { colors, toggleCompanyColor, toggleWorkerColor } = useLabourCalendarColors();
   const [requests, setRequests] = useState<SerializedLabourRequest[]>([]);
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -318,11 +335,16 @@ export function LookAheadClient({
   >(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const weekEnd = addDays(weekStart, 6);
+  const weekEnd = addDays(weekStart, weeksShown * 7 - 1);
   const from = formatDate(weekStart);
   const to = formatDate(weekEnd);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const colorEntities = useMemo(
+    () => buildColorEntitiesFromWorkers(workers),
+    [workers]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -375,7 +397,7 @@ export function LookAheadClient({
 
     run();
     return () => controller.abort();
-  }, [siteId, from, to, reloadKey]);
+  }, [siteId, from, to, reloadKey, weeksShown]);
 
   function openRequest(request: SerializedLabourRequest) {
     if (canCreate && request.status === "PENDING") {
@@ -418,37 +440,33 @@ export function LookAheadClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekStart((w) => addDays(w, -7))}
-            aria-label="Previous week"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="min-w-28 text-center text-sm font-medium">{formatWeekLabel(weekStart)}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekStart((w) => addDays(w, 7))}
-            aria-label="Next week"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setWeekStart(getMondayOfWeek(new Date()))}>
-            Today
-          </Button>
-        </div>
-        {canCreate && (
-          <Button type="button" onClick={() => setModal({ mode: "create" })}>
-            New request
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        action={
+          <LabourCalendarSettings
+            weeks={weeksShown}
+            onWeeksChange={setWeeksShown}
+            colorEntities={colorEntities}
+            colors={colors}
+            onCompanyColorToggle={toggleCompanyColor}
+            onWorkerColorToggle={toggleWorkerColor}
+          />
+        }
+      />
+
+      <LabourCalendarToolbar
+        weekStart={weekStart}
+        onWeekStartChange={setWeekStart}
+        weeksShown={weeksShown}
+        trailing={
+          canCreate ? (
+            <Button type="button" onClick={() => setModal({ mode: "create" })}>
+              New request
+            </Button>
+          ) : undefined
+        }
+      />
 
       {loadError && (
         <Card className="border-red-200 bg-red-50">
@@ -481,7 +499,9 @@ export function LookAheadClient({
       ) : (
         <WeekCalendarGrid
           weekStart={weekStart}
+          weeksShown={weeksShown}
           requests={requests}
+          colorPrefs={colors}
           variant="site"
           canCreate={canCreate}
           canDragRequest={(r) => canCreate && r.status === "PENDING"}
@@ -496,6 +516,7 @@ export function LookAheadClient({
           siteId={siteId}
           workers={workers}
           mode={modal.mode}
+          canCreate={canCreate}
           initial={"request" in modal ? modal.request : undefined}
           seedDate={"seedDate" in modal ? modal.seedDate : undefined}
           onClose={() => setModal(null)}
