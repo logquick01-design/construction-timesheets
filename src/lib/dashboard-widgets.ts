@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SiteFeatures } from "./site-features";
 
 export type DashboardWidgets = {
   totalHours: boolean;
@@ -47,6 +48,47 @@ export const DASHBOARD_WIDGET_LABELS: Record<
     description: "Alerts when labour look-ahead requests are denied.",
   },
 };
+
+export const WIDGET_REQUIRED_FEATURE: Partial<
+  Record<keyof DashboardWidgets, keyof SiteFeatures>
+> = {
+  totalHours: "logHours",
+  siteHours: "logHours",
+  categoryChart: "logHours",
+  workersList: "logHours",
+  tasksList: "logHours",
+  labourNotifications: "bookingCalendar",
+};
+
+export function isDashboardWidgetAvailable(
+  key: keyof DashboardWidgets,
+  features: SiteFeatures
+): boolean {
+  const required = WIDGET_REQUIRED_FEATURE[key];
+  return required ? features[required] : true;
+}
+
+export function applySiteFeaturesToWidgets(
+  widgets: DashboardWidgets,
+  features: SiteFeatures
+): DashboardWidgets {
+  const result = { ...widgets };
+  for (const key of Object.keys(WIDGET_REQUIRED_FEATURE) as Array<keyof DashboardWidgets>) {
+    if (!isDashboardWidgetAvailable(key, features)) {
+      result[key] = false;
+    }
+  }
+  return result;
+}
+
+export function hasEnabledAvailableWidget(
+  widgets: DashboardWidgets,
+  features: SiteFeatures
+): boolean {
+  return (Object.keys(widgets) as Array<keyof DashboardWidgets>).some(
+    (key) => widgets[key] && isDashboardWidgetAvailable(key, features)
+  );
+}
 
 export const dashboardWidgetsSchema = z.object({
   totalHours: z.boolean(),

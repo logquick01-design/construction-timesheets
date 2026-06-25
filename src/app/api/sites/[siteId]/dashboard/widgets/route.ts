@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { canAccessSite, getSession } from "@/lib/auth";
 import {
   dashboardWidgetsSchema,
-  hasEnabledWidget,
+  hasEnabledAvailableWidget,
   mergeDashboardWidgets,
 } from "@/lib/dashboard-widgets";
+import { loadSiteFeatures } from "@/lib/site-features";
 import { prisma } from "@/lib/prisma";
 
 type RouteContext = { params: Promise<{ siteId: string }> };
@@ -49,9 +50,11 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid widget settings" }, { status: 400 });
   }
 
-  if (!hasEnabledWidget(parsed.data)) {
+  const features = await loadSiteFeatures(siteId);
+
+  if (!hasEnabledAvailableWidget(parsed.data, features)) {
     return NextResponse.json(
-      { error: "At least one widget must remain enabled" },
+      { error: "At least one available widget must remain enabled" },
       { status: 400 }
     );
   }

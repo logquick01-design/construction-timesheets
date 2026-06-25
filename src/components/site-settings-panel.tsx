@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DEFAULT_SITE_FEATURES,
   SITE_FEATURE_LABELS,
@@ -12,11 +13,14 @@ export function SiteSettingsPanel({
   siteId,
   siteName,
   initialFeatures,
+  onSaved,
 }: {
   siteId: string;
   siteName: string;
   initialFeatures?: SiteFeatures;
+  onSaved?: (features: SiteFeatures) => void;
 }) {
+  const router = useRouter();
   const [features, setFeatures] = useState<SiteFeatures>(initialFeatures ?? DEFAULT_SITE_FEATURES);
   const [loading, setLoading] = useState(!initialFeatures);
   const [saving, setSaving] = useState(false);
@@ -77,6 +81,8 @@ export function SiteSettingsPanel({
       }
       setFeatures(json.features ?? features);
       setSaved(true);
+      onSaved?.(json.features ?? features);
+      router.refresh();
     } catch {
       setError("Failed to save settings");
     } finally {

@@ -17,8 +17,16 @@ import type { UserRole } from "@prisma/client";
 import {
   DASHBOARD_WIDGET_LABELS,
   DEFAULT_DASHBOARD_WIDGETS,
+  applySiteFeaturesToWidgets,
+  hasEnabledAvailableWidget,
+  isDashboardWidgetAvailable,
   type DashboardWidgets,
 } from "@/lib/dashboard-widgets";
+import {
+  DEFAULT_SITE_FEATURES,
+  mergeSiteFeatures,
+  type SiteFeatures,
+} from "@/lib/site-features";
 import type { TaskBudgetEntry } from "@/lib/task-budgets";
 import {
   TaskBudgetCharts,
@@ -39,6 +47,7 @@ export function DashboardClient({
   role,
   siteIds,
   lockedSiteId,
+  initialSiteFeatures,
   pageTitle,
   pageSubtitle,
 }: {
@@ -47,6 +56,7 @@ export function DashboardClient({
   role: UserRole;
   siteIds: string[];
   lockedSiteId?: string;
+  initialSiteFeatures?: SiteFeatures;
   pageTitle?: string;
   pageSubtitle?: string;
 }) {
@@ -59,6 +69,9 @@ export function DashboardClient({
   const [showSettings, setShowSettings] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("widgets");
   const [widgets, setWidgets] = useState<DashboardWidgets>(DEFAULT_DASHBOARD_WIDGETS);
+  const [siteFeatures, setSiteFeatures] = useState<SiteFeatures>(
+    initialSiteFeatures ?? DEFAULT_SITE_FEATURES
+  );
   const [taskBudgets, setTaskBudgets] = useState<TaskBudgetEntry[]>([]);
   const [siteTasks, setSiteTasks] = useState<SiteTask[]>([]);
   const [widgetsLoaded, setWidgetsLoaded] = useState(!lockedSiteId);
@@ -82,7 +95,27 @@ export function DashboardClient({
   }, [lockedSiteId]);
 
   useEffect(() => {
+    if (initialSiteFeatures) {
+      setSiteFeatures(initialSiteFeatures);
+    }
+  }, [initialSiteFeatures]);
+
+  const refreshSiteFeatures = useCallback(async () => {
     if (!lockedSiteId) return;
+    try {
+      const res = await fetch(`/api/sites/${lockedSiteId}/features`);
+      if (!res.ok) return;
+      const json = (await res.json()) as { features?: SiteFeatures };
+      setSiteFeatures(mergeSiteFeatures(json.features));
+    } catch {
+      // Keep the last known features if the refresh fails.
+    }
+  }, [lockedSiteId]);
+
+  useEffect(() => {
+    if (!lockedSiteId) return;
+
+    void refreshSiteFeatures();
 
     fetch(`/api/sites/${lockedSiteId}/dashboard/widgets`)
       .then((r) => r.json())
@@ -90,6 +123,10 @@ export function DashboardClient({
         if (json.widgets) setWidgets(json.widgets);
       })
       .finally(() => setWidgetsLoaded(true));
+  }, [lockedSiteId, refreshSiteFeatures]);
+
+  useEffect(() => {
+    if (!lockedSiteId || !siteFeatures.logHours) return;
 
     fetch(`/api/sites/${lockedSiteId}/dashboard/task-budgets`)
       .then((r) => r.json())
@@ -102,7 +139,23 @@ export function DashboardClient({
       .then((tasks: SiteTask[]) => {
         if (Array.isArray(tasks)) setSiteTasks(tasks);
       });
-  }, [lockedSiteId]);
+  }, [lockedSiteId, siteFeatures.logHours]);
+
+  useEffect(() => {
+    if (!lockedSiteId) return;
+
+    function onFocus() {
+      void refreshSiteFeatures();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [lockedSiteId, refreshSiteFeatures]);
+
+  const visibleWidgets = applySiteFeaturesToWidgets(widgets, siteFeatures);
+  const logHoursEnabled = siteFeatures.logHours;
+  const availableWidgetKeys = (Object.keys(DASHBOARD_WIDGET_LABELS) as Array<
+    keyof DashboardWidgets
+  >).filter((key) => isDashboardWidgetAvailable(key, siteFeatures));
 
   const saveWidgets = useCallback(
     async (next: DashboardWidgets) => {
@@ -152,6 +205,10 @@ export function DashboardClient({
 
   async function updateWidget<K extends keyof DashboardWidgets>(key: K, value: boolean) {
     const next = { ...widgets, [key]: value };
+    if (!hasEnabledAvailableWidget(next, siteFeatures)) {
+      alert("At least one available widget must stay enabled.");
+      return;
+    }
     const saved = await saveWidgets(next);
     if (saved) setWidgets(next);
   }
@@ -176,8 +233,9 @@ export function DashboardClient({
   }, [from, to, siteId, categoryId]);
 
   useEffect(() => {
+    if (lockedSiteId && !siteFeatures.logHours) return;
     load();
-  }, [load]);
+  }, [load, lockedSiteId, siteFeatures.logHours]);
 
   const catNames = categories.map((c) => c.name);
   const taskBudgetHoursByTaskId = data?.allTimeHoursByTaskId ?? {};
@@ -223,17 +281,17 @@ export function DashboardClient({
     </Card>
   );
 
-  const dashboardContent = data && (
+  const dashboardContent = (
     <>
-      {(widgets.totalHours || widgets.siteHours) && (
+      {data && logHoursEnabled && (visibleWidgets.totalHours || visibleWidgets.siteHours) && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {widgets.totalHours && (
+          {visibleWidgets.totalHours && (
             <Card>
               <p className="text-sm text-muted">Total hours (filtered)</p>
               <p className="text-3xl font-bold text-ink">{data.grandTotal.toFixed(1)}</p>
             </Card>
           )}
-          {widgets.siteHours &&
+          {visibleWidgets.siteHours &&
             sites.map((s) => (
               <Card key={s.id}>
                 <p className="text-sm text-muted">{s.name}</p>
@@ -245,7 +303,7 @@ export function DashboardClient({
         </div>
       )}
 
-      {widgets.categoryChart && (
+      {data && logHoursEnabled && visibleWidgets.categoryChart && (
         <Card>
           <h2 className="mb-4 font-semibold text-ink">
             {lockedSiteId ? "Hours by category" : "Hours by category per site"}
@@ -272,9 +330,9 @@ export function DashboardClient({
         </Card>
       )}
 
-      {(widgets.workersList || widgets.tasksList) && (
+      {data && logHoursEnabled && (visibleWidgets.workersList || visibleWidgets.tasksList) && (
         <div className="grid gap-4 lg:grid-cols-2">
-          {widgets.workersList && (
+          {visibleWidgets.workersList && (
             <Card>
               <h2 className="mb-3 font-semibold text-ink">Hours per worker</h2>
               <ul className="divide-y divide-border-light">
@@ -290,7 +348,7 @@ export function DashboardClient({
               </ul>
             </Card>
           )}
-          {widgets.tasksList && (
+          {visibleWidgets.tasksList && (
             <Card>
               <h2 className="mb-3 font-semibold text-ink">Hours per task</h2>
               <ul className="divide-y divide-border-light">
@@ -312,7 +370,7 @@ export function DashboardClient({
         </div>
       )}
 
-      {lockedSiteId && (
+      {lockedSiteId && logHoursEnabled && (
         <TaskBudgetCharts
           taskBudgets={taskBudgets}
           siteTasks={siteTasks}
@@ -320,9 +378,17 @@ export function DashboardClient({
         />
       )}
 
-      {lockedSiteId && widgets.labourNotifications && (
+      {lockedSiteId && visibleWidgets.labourNotifications && (
         <LabourNotificationsWidget siteId={lockedSiteId} />
       )}
+
+      {lockedSiteId && availableWidgetKeys.length === 0 && (
+          <Card>
+            <p className="text-sm text-muted">
+              No dashboard widgets are available for this site&apos;s enabled features.
+            </p>
+          </Card>
+        )}
     </>
   );
 
@@ -346,10 +412,11 @@ export function DashboardClient({
         <Card>
           <h2 className="font-semibold text-ink">Dashboard widgets</h2>
           <p className="mt-1 mb-4 text-sm text-muted">
-            Choose which sections appear on your dashboard. At least one widget must stay enabled.
+            Choose which sections appear on your dashboard. At least one available widget must stay
+            enabled.
           </p>
           <div className="space-y-2">
-            {(Object.keys(DASHBOARD_WIDGET_LABELS) as Array<keyof DashboardWidgets>).map((key) => (
+            {availableWidgetKeys.map((key) => (
               <Toggle
                 key={key}
                 id={`widget-${key}`}
@@ -359,26 +426,33 @@ export function DashboardClient({
                 description={DASHBOARD_WIDGET_LABELS[key].description}
               />
             ))}
+            {availableWidgetKeys.length === 0 && (
+              <p className="text-sm text-muted">
+                No widgets are available while this site&apos;s features are turned off.
+              </p>
+            )}
           </div>
 
-          <div className="mt-4 flex items-start justify-between gap-3 border-t border-border-light pt-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-ink">Task budget usage</p>
-              <p className="mt-0.5 text-sm text-muted">
-                Pie charts comparing logged hours against site budget totals. Use the show toggle on
-                each task to control which appear on the dashboard.
-              </p>
+          {logHoursEnabled && (
+            <div className="mt-4 flex items-start justify-between gap-3 border-t border-border-light pt-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">Task budget usage</p>
+                <p className="mt-0.5 text-sm text-muted">
+                  Pie charts comparing logged hours against site budget totals. Use the show toggle on
+                  each task to control which appear on the dashboard.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 shrink-0 text-accent"
+                onClick={() => setSettingsView("taskBudgetConfig")}
+              >
+                Configure
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="mt-1 shrink-0 text-accent"
-              onClick={() => setSettingsView("taskBudgetConfig")}
-            >
-              Configure
-            </Button>
-          </div>
+          )}
         </Card>
       </div>
     );
@@ -416,7 +490,7 @@ export function DashboardClient({
           settingsContent
         ) : (
           <div className="space-y-6">
-            {filtersCard}
+            {logHoursEnabled && filtersCard}
             {widgetsLoaded && dashboardContent}
           </div>
         )}

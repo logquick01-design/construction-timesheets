@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireSession, canAccessSite } from "@/lib/auth";
 import { canLogHours, canManageSite } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { mergeSiteFeatures, isSiteFeatureEnabled } from "@/lib/site-features";
+import { mergeSiteFeatures } from "@/lib/site-features";
 import { SiteNav } from "@/components/site-nav";
 
 export default async function SiteLayout({
@@ -24,24 +24,19 @@ export default async function SiteLayout({
   if (!site) notFound();
 
   const features = mergeSiteFeatures(site.features);
-
-  const tabs = [
-    { segment: "dashboard", label: "Dashboard" },
-    ...(isSiteFeatureEnabled(features, "bookingCalendar")
-      ? [{ segment: "lookahead", label: "Look Ahead" }]
-      : []),
-    ...(canLogHours(session) && isSiteFeatureEnabled(features, "logHours")
-      ? [{ segment: "timesheet", label: "Log Hours" }]
-      : []),
-    ...(canManageSite(session, siteId) ? [{ segment: "setup", label: "Setup" }] : []),
-    ...(isSiteFeatureEnabled(features, "exports")
-      ? [{ segment: "exports", label: "Exports" }]
-      : []),
-  ];
+  const canLog = canLogHours(session);
+  const canSetup = canManageSite(session, siteId);
 
   return (
     <div className="-mx-4 -my-6">
-      <SiteNav siteId={siteId} siteName={site.name} location={site.location} tabs={tabs} />
+      <SiteNav
+        siteId={siteId}
+        siteName={site.name}
+        location={site.location}
+        features={features}
+        canLogHours={canLog}
+        canManageSite={canSetup}
+      />
       <div className="mx-auto max-w-6xl px-4 py-6">{children}</div>
     </div>
   );

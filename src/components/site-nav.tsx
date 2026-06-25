@@ -1,22 +1,71 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-type SiteTab = { segment: string; label: string };
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  buildSiteNavTabs,
+  mergeSiteFeatures,
+  type SiteFeatures,
+} from "@/lib/site-features";
 
 export function SiteNav({
   siteId,
   siteName,
   location,
-  tabs,
+  features: initialFeatures,
+  canLogHours,
+  canManageSite,
 }: {
   siteId: string;
   siteName: string;
   location: string;
-  tabs: SiteTab[];
+  features: SiteFeatures;
+  canLogHours: boolean;
+  canManageSite: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [features, setFeatures] = useState(initialFeatures);
+
+  useEffect(() => {
+    setFeatures(initialFeatures);
+  }, [initialFeatures]);
+
+  const refreshFeatures = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sites/${siteId}/features`);
+      if (!res.ok) return;
+      const json = (await res.json()) as { features?: SiteFeatures };
+      setFeatures(mergeSiteFeatures(json.features));
+    } catch {
+      // Keep the last known features if the refresh fails.
+    }
+  }, [siteId]);
+
+  useEffect(() => {
+    void refreshFeatures();
+  }, [refreshFeatures]);
+
+  useEffect(() => {
+    function onFocus() {
+      void refreshFeatures();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshFeatures]);
+
+  const tabs = useMemo(
+    () => buildSiteNavTabs({ features, canLogHours, canManageSite }),
+    [features, canLogHours, canManageSite]
+  );
+
+  useEffect(() => {
+    const segment = pathname.replace(`/sites/${siteId}/`, "").split("/")[0];
+    if (segment === "dashboard" || !segment) return;
+    if (tabs.some((t) => t.segment === segment)) return;
+    router.replace(`/sites/${siteId}/dashboard`);
+  }, [pathname, router, siteId, tabs]);
 
   return (
     <div className="border-b border-border bg-white">

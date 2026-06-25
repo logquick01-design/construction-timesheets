@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { DashboardClient } from "@/components/dashboard-client";
+import { loadSiteFeatures } from "@/lib/site-features";
 import { getWeekRange, formatDate } from "@/lib/utils";
 
 export default async function SiteDashboardPage({
@@ -9,6 +10,7 @@ export default async function SiteDashboardPage({
 }) {
   const { siteId } = await params;
   const session = await requireSession();
+  const features = await loadSiteFeatures(siteId);
   const { start, end } = getWeekRange();
 
   return (
@@ -18,6 +20,7 @@ export default async function SiteDashboardPage({
       role={session.role}
       siteIds={session.siteIds}
       lockedSiteId={siteId}
+      initialSiteFeatures={features}
       pageTitle="Dashboard"
       pageSubtitle="Hours logged on this site"
     />

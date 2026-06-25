@@ -161,6 +161,11 @@ function SitesAdmin() {
                     siteId={selectedSite.id}
                     siteName={selectedSite.name}
                     initialFeatures={selectedSite.features}
+                    onSaved={(features) => {
+                      setItems((current) =>
+                        current.map((s) => (s.id === selectedSite.id ? { ...s, features } : s))
+                      );
+                    }}
                   />
                   <div className="mt-3">
                     <Button type="button" variant="ghost" onClick={closeSiteDetail}>

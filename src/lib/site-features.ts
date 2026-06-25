@@ -75,3 +75,25 @@ export function isSiteFeatureEnabled(
 ): boolean {
   return features[feature];
 }
+
+export type SiteNavTab = { segment: string; label: string };
+
+export function buildSiteNavTabs(opts: {
+  features: SiteFeatures;
+  canLogHours: boolean;
+  canManageSite: boolean;
+}): SiteNavTab[] {
+  return [
+    { segment: "dashboard", label: "Dashboard" },
+    ...(isSiteFeatureEnabled(opts.features, "bookingCalendar")
+      ? [{ segment: "lookahead", label: "Look Ahead" }]
+      : []),
+    ...(opts.canLogHours && isSiteFeatureEnabled(opts.features, "logHours")
+      ? [{ segment: "timesheet", label: "Log Hours" }]
+      : []),
+    ...(opts.canManageSite ? [{ segment: "setup", label: "Setup" }] : []),
+    ...(isSiteFeatureEnabled(opts.features, "exports")
+      ? [{ segment: "exports", label: "Exports" }]
+      : []),
+  ];
+}
