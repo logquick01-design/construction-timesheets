@@ -38,15 +38,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (PUBLIC.includes(pathname)) {
-    const token = request.cookies.get(COOKIE_NAME)?.value;
-    if (token) {
-      try {
-        await jwtVerify(token, getSecret());
-        return NextResponse.redirect(new URL("/", request.url));
-      } catch {
-        /* stay on login */
-      }
-    }
     return NextResponse.next();
   }
 
@@ -59,7 +50,9 @@ export async function middleware(request: NextRequest) {
     await jwtVerify(token, getSecret());
     return NextResponse.next();
   } catch {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const res = NextResponse.redirect(new URL("/login", request.url));
+    res.cookies.delete(COOKIE_NAME);
+    return res;
   }
 }
 

@@ -134,15 +134,22 @@ export function LabourCalendarSettings({
   }));
 
   useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+    if (!open) return;
+
+    function onPointerDown(e: PointerEvent) {
+      // Mobile uses the backdrop button to close; avoid fighting fixed panel positioning.
+      if (!window.matchMedia("(min-width: 640px)").matches) return;
+
+      const target = e.target as Node | null;
+      if (!target || !ref.current?.contains(target)) {
         setOpen(false);
         setColorTagsOpen(false);
       }
     }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -160,13 +167,28 @@ export function LabourCalendarSettings({
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label="Calendar settings"
-        className={cn("shrink-0 p-2", open && "bg-fill text-accent")}
+        className={cn("shrink-0 min-h-11 min-w-11 p-2 sm:min-h-0 sm:min-w-0", open && "bg-fill text-accent")}
       >
         <Cog className="h-4 w-4" aria-hidden />
       </Button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-4 shadow-lg">
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/20 sm:hidden"
+            aria-label="Close calendar settings"
+            onClick={() => {
+              setOpen(false);
+              setColorTagsOpen(false);
+            }}
+          />
+          <div
+            className={cn(
+              "z-50 max-h-[75dvh] overflow-y-auto rounded-xl border border-border bg-surface p-4 shadow-lg",
+              "fixed inset-x-4 bottom-4 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:mt-1 sm:max-h-none sm:w-[22rem] sm:max-w-[calc(100vw-2rem)]"
+            )}
+          >
           <p className="mb-3 text-sm font-semibold text-ink">Calendar settings</p>
 
           <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
@@ -256,6 +278,7 @@ export function LabourCalendarSettings({
             </div>
           </div>
         </div>
+        </>
       )}
     </div>
   );

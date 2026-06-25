@@ -89,6 +89,9 @@ require_auth_secret
 echo "Applying database schema..."
 node_modules/.bin/prisma db push --skip-generate
 
+echo "Linking workers to person records..."
+node scripts/backfill-worker-persons.mjs || echo "WARNING: Person backfill failed"
+
 echo "Repairing dashboard preference data..."
 node scripts/repair-dashboard-preferences.mjs
 

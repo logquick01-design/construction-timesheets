@@ -13,7 +13,7 @@
     "start:production": "bash scripts/start-production.sh",
     "lint": "next lint",
     "prisma:sync": "prisma generate && node scripts/write-prisma-fingerprint.mjs",
-    "db:push": "node scripts/repair-dashboard-preferences.mjs && prisma db push --accept-data-loss && node scripts/repair-dashboard-preferences.mjs && npm run prisma:sync",
+    "db:push": "node scripts/repair-dashboard-preferences.mjs && prisma db push --accept-data-loss && node scripts/repair-dashboard-preferences.mjs && node scripts/backfill-worker-persons.mjs && npm run prisma:sync",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "npm run db:push && tsx prisma/seed.ts",
     "postinstall": "npm run prisma:sync"

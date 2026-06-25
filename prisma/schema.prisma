@@ -96,23 +96,36 @@ model Company {
   @@index([siteId])
 }
 
+model Person {
+  id             String   @id @default(cuid())
+  name           String
+  normalizedName String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workers Worker[]
+}
+
 model Worker {
   id        String   @id @default(cuid())
   name      String
   trade     String
   siteId    String
   companyId String?
+  personId  String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   site       Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
   company    Company?         @relation(fields: [companyId], references: [id])
+  person     Person?          @relation(fields: [personId], references: [id])
   timesheets TimesheetEntry[]
   labourRequestWorkers LabourRequestWorker[]
 
   @@index([siteId])
   @@index([companyId])
+  @@index([personId])
 }
 
 model CostCodeCategory {

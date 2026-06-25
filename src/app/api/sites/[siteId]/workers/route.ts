@@ -15,9 +15,20 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const workers = await prisma.worker.findMany({
     where: { siteId, active: true },
-    include: { company: { select: { id: true, name: true } } },
+    include: {
+      company: { select: { id: true, name: true } },
+      person: { select: { id: true } },
+    },
     orderBy: [{ company: { name: "asc" } }, { name: "asc" }],
   });
 
-  return NextResponse.json(workers);
+  return NextResponse.json(
+    workers.map((w) => ({
+      id: w.id,
+      name: w.name,
+      trade: w.trade,
+      personId: w.personId,
+      company: w.company,
+    }))
+  );
 }

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
-import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
 import {
   datesToStrings,
   nextWeekWeekdays,
@@ -29,6 +28,22 @@ import {
 } from "./labour-calendar-shared";
 
 type FormMode = "create" | "edit" | "view";
+
+async function fetchBookingWarning(input: {
+  siteId: string;
+  workerIds: string[];
+  dates: string[];
+  excludeRequestId?: string;
+}): Promise<string | null> {
+  const res = await fetch("/api/labour-requests/booking-warnings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await readJsonResponse<{ warning?: string | null; error?: string }>(res);
+  if (!res.ok) return null;
+  return json?.warning ?? null;
+}
 
 function RequestFormModal({
   siteId,
@@ -61,6 +76,7 @@ function RequestFormModal({
   const [extraDate, setExtraDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [bookingWarning, setBookingWarning] = useState<string | null>(null);
 
   const workersByCompany = useMemo(() => {
     const map = new Map<string, WorkerOption[]>();
@@ -93,10 +109,47 @@ function RequestFormModal({
     setExtraDate("");
   }
 
+  useEffect(() => {
+    if (readOnly || selectedWorkers.length === 0 || dates.length === 0) {
+      setBookingWarning(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      const warning = await fetchBookingWarning({
+        siteId,
+        workerIds: selectedWorkers,
+        dates,
+        excludeRequestId: mode === "edit" && initial ? initial.id : undefined,
+      });
+      if (!controller.signal.aborted) setBookingWarning(warning);
+    }, 300);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [siteId, selectedWorkers, dates, readOnly, mode, initial?.id]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (readOnly) return;
     setError("");
+
+    const warning = await fetchBookingWarning({
+      siteId,
+      workerIds: selectedWorkers,
+      dates,
+      excludeRequestId: mode === "edit" && initial ? initial.id : undefined,
+    });
+    if (warning) {
+      const proceed = confirm(
+        `${warning}\n\nThis worker already has approved hours on another site. Pending requests are ignored.\n\nDo you want to proceed with your request?`
+      );
+      if (!proceed) return;
+    }
+
     setSaving(true);
 
     try {
@@ -157,8 +210,8 @@ function RequestFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-      <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:p-4 sm:items-center">
+      <Card className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-b-none sm:rounded-b-xl sm:max-h-[90vh]">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-ink">
@@ -170,7 +223,7 @@ function RequestFormModal({
               <p className="text-sm text-muted">{STATUS_LABELS[initial.status]}</p>
             )}
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-fill">
+          <button type="button" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-fill">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -178,7 +231,7 @@ function RequestFormModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label>Workers</Label>
-            <div className="max-h-40 space-y-3 overflow-y-auto rounded-lg border border-border p-3">
+            <div className="max-h-52 space-y-3 overflow-y-auto rounded-lg border border-border p-3 sm:max-h-40">
               {workersByCompany.map(([company, list]) => (
                 <div key={company}>
                   <p className="mb-1 text-xs font-semibold uppercase text-muted">{company}</p>
@@ -186,13 +239,14 @@ function RequestFormModal({
                     {list.map((w) => (
                       <label
                         key={w.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-fill"
+                        className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-fill"
                       >
                         <input
                           type="checkbox"
                           checked={selectedWorkers.includes(w.id)}
                           onChange={() => toggleWorker(w.id)}
                           disabled={readOnly}
+                          className="h-5 w-5 shrink-0"
                         />
                         <span className="text-sm">
                           {w.name}{" "}
@@ -212,11 +266,11 @@ function RequestFormModal({
           <div>
             <Label>Dates</Label>
             {!readOnly && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => addWeekdays(thisWeekWeekdays)}>
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button type="button" variant="secondary" size="sm" className="min-h-11 w-full sm:w-auto" onClick={() => addWeekdays(thisWeekWeekdays)}>
                   This week (Mon–Fri)
                 </Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => addWeekdays(nextWeekWeekdays)}>
+                <Button type="button" variant="secondary" size="sm" className="min-h-11 w-full sm:w-auto" onClick={() => addWeekdays(nextWeekWeekdays)}>
                   Next week (Mon–Fri)
                 </Button>
               </div>
@@ -238,14 +292,15 @@ function RequestFormModal({
               ))}
             </div>
             {!readOnly && (
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   type="date"
                   value={extraDate}
                   onChange={(e) => setExtraDate(e.target.value)}
                   aria-label="Add date"
+                  className="min-h-11 text-base"
                 />
-                <Button type="button" variant="secondary" onClick={addExtraDate}>
+                <Button type="button" variant="secondary" className="min-h-11 shrink-0 sm:w-auto" onClick={addExtraDate}>
                   Add day
                 </Button>
               </div>
@@ -287,19 +342,30 @@ function RequestFormModal({
             </div>
           )}
 
+          {bookingWarning && !readOnly && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-medium">Approved elsewhere</p>
+              <p>{bookingWarning}</p>
+              <p className="mt-1 text-xs">
+                This person already has approved hours on another site. You can still submit your
+                request — pending bookings elsewhere are ignored.
+              </p>
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             {canCreate && initial && canCancelLabourRequest(initial.status) && (
-              <Button type="button" variant="danger" onClick={handleCancel} disabled={saving}>
+              <Button type="button" variant="danger" className="min-h-11 w-full sm:w-auto" onClick={handleCancel} disabled={saving}>
                 Cancel request
               </Button>
             )}
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" className="min-h-11 w-full sm:w-auto" onClick={onClose}>
               Close
             </Button>
             {!readOnly && (
-              <Button type="submit" disabled={saving || selectedWorkers.length === 0 || dates.length === 0}>
+              <Button type="submit" className="min-h-11 w-full sm:w-auto" disabled={saving || selectedWorkers.length === 0 || dates.length === 0}>
                 {saving ? "Saving…" : mode === "edit" ? "Save changes" : "Submit request"}
               </Button>
             )}
@@ -411,14 +477,21 @@ export function LookAheadClient({
     const request = requests.find((r) => r.id === requestId);
     if (!request) return;
 
-    const conflict = rescheduleConflictMessage(requests, request, fromDate, toDate);
-    if (conflict) {
-      setLoadError(conflict);
-      return;
-    }
-
     const newDates = rescheduleRequestDate(request.dates, fromDate, toDate);
     if (!newDates) return;
+
+    const warning = await fetchBookingWarning({
+      siteId,
+      workerIds: request.workers.map((w) => w.workerId),
+      dates: [toDate],
+      excludeRequestId: request.id,
+    });
+    if (warning) {
+      const proceed = confirm(
+        `${warning}\n\nThis worker already has approved hours on another site. Pending requests are ignored.\n\nDo you want to proceed with your request?`
+      );
+      if (!proceed) return;
+    }
 
     const previous = requests;
     setRequests((prev) =>
@@ -435,7 +508,10 @@ export function LookAheadClient({
       setRequests(previous);
       const json = await readJsonResponse<{ error?: string }>(res);
       setLoadError(errorMessageFromBody(json, "Failed to reschedule request"));
+      return;
     }
+
+    reload();
   }
 
   return (
@@ -490,7 +566,14 @@ export function LookAheadClient({
           <span className="h-3 w-3 rounded border border-accent bg-accent/15" /> Accepted
         </span>
         {canCreate && (
-          <span>Drag pending requests to another day to reschedule (same worker cannot be double-booked)</span>
+          <>
+            <span className="hidden sm:inline">
+              Drag pending requests to another day to reschedule. You may still submit if someone is booked elsewhere.
+            </span>
+            <span className="sm:hidden">
+              Tap a booking to view or edit. Use Move to reschedule to another day.
+            </span>
+          </>
         )}
       </div>
 

@@ -10,11 +10,13 @@ import {
 } from "@/lib/labour-calendar-colors";
 import { cn, formatDate, parseDateInput } from "@/lib/utils";
 import { LabourBookingColorTags } from "./labour-color-dot";
+import { Button, Input } from "./ui";
 
 export type WorkerOption = {
   id: string;
   name: string;
   trade: string;
+  personId?: string | null;
   company: { id: string; name: string } | null;
 };
 
@@ -160,7 +162,8 @@ export function LabourRequestCard({
         onClick?.();
       }}
       className={cn(
-        "w-full rounded-lg border px-2 py-1.5 text-left text-xs transition hover:ring-2 hover:ring-accent/30",
+        "w-full rounded-lg border text-left transition hover:ring-2 hover:ring-accent/30",
+        "min-h-11 px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1.5 sm:text-xs",
         draggable && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
         styles[request.status]
@@ -179,6 +182,147 @@ export function LabourRequestCard({
       </p>
       <p className="truncate text-[10px] opacity-80">{STATUS_LABELS[request.status]}</p>
     </button>
+  );
+}
+
+function dayNameIndex(day: Date): number {
+  const dayOfWeek = day.getDay();
+  return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+}
+
+function MoveBookingControl({
+  fromDate,
+  onMove,
+}: {
+  fromDate: string;
+  onMove: (toDate: string) => void;
+}) {
+  const [toDate, setToDate] = useState("");
+
+  return (
+    <div
+      className="flex items-center gap-2 border-t border-border/60 px-3 py-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Input
+        type="date"
+        value={toDate}
+        onChange={(e) => setToDate(e.target.value)}
+        aria-label={`Move booking from ${fromDate}`}
+        className="min-h-11 flex-1 py-2 text-base"
+      />
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="min-h-11 shrink-0 px-3"
+        disabled={!toDate || toDate === fromDate}
+        onClick={() => {
+          onMove(toDate);
+          setToDate("");
+        }}
+      >
+        Move
+      </Button>
+    </div>
+  );
+}
+
+function MobileWeekCalendarList({
+  weekStart,
+  weeksShown,
+  requests,
+  variant = "site",
+  onDayClick,
+  onRequestClick,
+  canCreate,
+  canDragRequest,
+  onReschedule,
+  colorPrefs,
+}: {
+  weekStart: Date;
+  weeksShown: number;
+  requests: SerializedLabourRequest[];
+  variant?: "site" | "admin-pending" | "admin-accepted";
+  onDayClick?: (dateStr: string) => void;
+  onRequestClick?: (request: SerializedLabourRequest) => void;
+  canCreate?: boolean;
+  canDragRequest?: (request: SerializedLabourRequest) => boolean;
+  onReschedule?: (requestId: string, fromDate: string, toDate: string) => void;
+  colorPrefs?: LabourCalendarColorPrefs;
+}) {
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const allDays = getCalendarDays(weekStart, weeksShown);
+
+  return (
+    <div className="space-y-3">
+      {allDays.map((day) => {
+        const dateStr = formatDate(day);
+        const dayRequests = requestsForDate(requests, dateStr);
+        const nameIndex = dayNameIndex(day);
+        const isWeekend = nameIndex >= 5;
+
+        return (
+          <div
+            key={dateStr}
+            className={cn(
+              "overflow-hidden rounded-xl border border-border bg-surface",
+              isWeekend && "bg-fill/40"
+            )}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border-light px-3 py-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  {dayNames[nameIndex]}
+                </p>
+                <p className="text-base font-semibold text-ink">
+                  {String(day.getDate()).padStart(2, "0")}/
+                  {String(day.getMonth() + 1).padStart(2, "0")}
+                </p>
+              </div>
+              {canCreate && onDayClick && (
+                <button
+                  type="button"
+                  onClick={() => onDayClick(dateStr)}
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-accent/15 text-xl font-medium text-accent hover:bg-accent/25"
+                  aria-label={`Add request for ${dateStr}`}
+                >
+                  +
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-border-light">
+              {dayRequests.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-muted">No bookings</p>
+              ) : (
+                dayRequests.map((request) => {
+                  const canMove = Boolean(canDragRequest?.(request) && onReschedule);
+
+                  return (
+                    <div key={`${request.id}-${dateStr}`}>
+                      <LabourRequestCard
+                        request={request}
+                        dateStr={dateStr}
+                        variant={variant}
+                        colorPrefs={colorPrefs}
+                        onClick={() => onRequestClick?.(request)}
+                      />
+                      {canMove && onReschedule && (
+                        <MoveBookingControl
+                          fromDate={dateStr}
+                          onMove={(toDate) => onReschedule(request.id, dateStr, toDate)}
+                        />
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -224,7 +368,23 @@ export function WeekCalendarGrid({
   }
 
   return (
-    <div className="overflow-x-auto space-y-4">
+    <>
+      <div className="sm:hidden">
+        <MobileWeekCalendarList
+          weekStart={weekStart}
+          weeksShown={weeksShown}
+          requests={requests}
+          variant={variant}
+          onDayClick={onDayClick}
+          onRequestClick={onRequestClick}
+          canCreate={canCreate}
+          canDragRequest={canDragRequest}
+          onReschedule={onReschedule}
+          colorPrefs={colorPrefs}
+        />
+      </div>
+
+      <div className="hidden overflow-x-auto space-y-4 sm:block">
       {weeks.map((weekDays, weekIndex) => (
         <div key={weekIndex}>
           {weeksShown > 1 && (
@@ -303,7 +463,8 @@ export function WeekCalendarGrid({
           </div>
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 }
 

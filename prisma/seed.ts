@@ -12,7 +12,18 @@ const CATEGORY_NAMES = [
 
 type TaskSeed = { name: string; reference: string; categoryIndex: number };
 
-// Each site gets its own categories, tasks, companies and workers.
+function normalizePersonName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function findOrCreatePerson(name: string) {
+  const trimmed = name.trim();
+  const normalizedName = normalizePersonName(trimmed);
+  const existing = await prisma.person.findUnique({ where: { normalizedName } });
+  if (existing) return existing;
+  return prisma.person.create({ data: { name: trimmed, normalizedName } });
+}
+
 async function seedSite(opts: {
   name: string;
   location: string;
@@ -50,12 +61,14 @@ async function seedSite(opts: {
       data: { name: c.name, siteId: site.id },
     });
     for (const w of c.workers) {
+      const person = await findOrCreatePerson(w.name);
       const worker = await prisma.worker.create({
         data: {
           name: w.name,
           trade: w.trade,
           siteId: site.id,
           companyId: company.id,
+          personId: person.id,
         },
       });
       workers.push(worker);
@@ -76,6 +89,7 @@ async function main() {
   await prisma.costCodeCategory.deleteMany();
   await prisma.worker.deleteMany();
   await prisma.company.deleteMany();
+  await prisma.person.deleteMany();
   await prisma.site.deleteMany();
   await prisma.user.deleteMany();
 
@@ -120,6 +134,7 @@ async function main() {
       {
         name: "Coastal Construction",
         workers: [
+          { name: "James Carter", trade: "Carpenter" },
           { name: "Priya Shah", trade: "Plumber" },
           { name: "Owen Bell", trade: "Steel fixer" },
         ],
@@ -184,7 +199,7 @@ async function main() {
         hours: 6,
       },
       {
-        workerId: siteB.workers[0].id,
+        workerId: siteB.workers[1].id,
         siteId: siteB.site.id,
         taskId: siteB.tasks[0].id,
         date: today,
@@ -194,6 +209,7 @@ async function main() {
   });
 
   console.log("Seed complete.");
+  console.log("James Carter is linked at Riverside Tower and Harbour Phase 2 (same Person) for cross-site conflict testing.");
   console.log("Demo logins (password: password123):");
   console.log("  Admin:", admin.email);
   console.log("  Site Manager:", manager.email);

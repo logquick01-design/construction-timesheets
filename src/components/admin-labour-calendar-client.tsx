@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { SerializedLabourRequest } from "@/lib/labour-requests";
-import { rescheduleConflictMessage } from "@/lib/labour-conflicts";
+import { acceptBookingConflictMessage, rescheduleConflictMessage } from "@/lib/labour-conflicts";
 import { formatDateRangeDisplay, rescheduleRequestDate } from "@/lib/labour-dates";
 import { formatDate } from "@/lib/utils";
 import { Button, Card, Input, Label, PageHeader, Select } from "./ui";
@@ -28,12 +28,16 @@ const STATUS_OPTIONS: { value: LabourRequestStatus; label: string }[] = [
   { value: "CANCELLED", label: "Cancelled" },
 ];
 
+const DEFAULT_DENY_MESSAGE = "Declined from the company labour calendar.";
+
 function BookingStatusModal({
   request,
+  allRequests,
   onClose,
   onUpdated,
 }: {
   request: SerializedLabourRequest;
+  allRequests: SerializedLabourRequest[];
   onClose: () => void;
   onUpdated: () => void;
 }) {
@@ -45,7 +49,8 @@ function BookingStatusModal({
   const [hoursPerDay, setHoursPerDay] = useState(request.workers[0]?.hoursPerDay ?? 8);
   const [saving, setSaving] = useState(false);
   const [hoursSaving, setHoursSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [acceptError, setAcceptError] = useState("");
+  const [statusError, setStatusError] = useState("");
   const [hoursError, setHoursError] = useState("");
 
   const currentHours = request.workers[0]?.hoursPerDay ?? 8;
@@ -55,12 +60,25 @@ function BookingStatusModal({
     setHoursPerDay(currentHours);
   }, [request.id, currentHours]);
 
-  async function applyStatus(status: LabourRequestStatus, statusMessage?: string) {
-    setError("");
+  async function applyStatus(
+    status: LabourRequestStatus,
+    statusMessage?: string,
+    options?: { checkAcceptConflict?: boolean }
+  ) {
+    setStatusError("");
 
     if (status === "DENIED" && !statusMessage?.trim()) {
-      setError("A message is required when denying a request");
+      setStatusError("A message is required when denying a request");
       return;
+    }
+
+    if (status === "ACCEPTED" && options?.checkAcceptConflict !== false) {
+      setAcceptError("");
+      const conflict = acceptBookingConflictMessage(allRequests, request);
+      if (conflict) {
+        setAcceptError(conflict);
+        return;
+      }
     }
 
     setSaving(true);
@@ -75,7 +93,9 @@ function BookingStatusModal({
       });
       if (!res.ok) {
         const json = await readJsonResponse<{ error?: string }>(res);
-        setError(errorMessageFromBody(json, "Failed to update status"));
+        const msg = errorMessageFromBody(json, "Failed to update status");
+        if (status === "ACCEPTED") setAcceptError(msg);
+        else setStatusError(msg);
         return;
       }
       onUpdated();
@@ -83,6 +103,26 @@ function BookingStatusModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function acceptRequest() {
+    setAcceptError("");
+    setStatusError("");
+    await applyStatus("ACCEPTED", message, { checkAcceptConflict: true });
+  }
+
+  async function denyRequest() {
+    setAcceptError("");
+    setStatusError("");
+    await applyStatus("DENIED", message.trim() || DEFAULT_DENY_MESSAGE, {
+      checkAcceptConflict: false,
+    });
+  }
+
+  async function cancelBooking() {
+    setAcceptError("");
+    setStatusError("");
+    await applyStatus("CANCELLED", message, { checkAcceptConflict: false });
   }
 
   async function saveHours(e: React.FormEvent) {
@@ -115,24 +155,35 @@ function BookingStatusModal({
   async function updateStatus(e: React.FormEvent) {
     e.preventDefault();
     if (newStatus === request.status) {
-      setError("Choose a different status to update this booking");
+      setStatusError("Choose a different status to update this booking");
       return;
     }
-    await applyStatus(newStatus, message);
+    setAcceptError("");
+    if (newStatus === "ACCEPTED") {
+      await applyStatus("ACCEPTED", message, { checkAcceptConflict: true });
+      return;
+    }
+    if (newStatus === "DENIED") {
+      await applyStatus("DENIED", message.trim() || DEFAULT_DENY_MESSAGE, {
+        checkAcceptConflict: false,
+      });
+      return;
+    }
+    await applyStatus(newStatus, message, { checkAcceptConflict: false });
   }
 
   const isPending = request.status === "PENDING";
   const isAccepted = request.status === "ACCEPTED";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-      <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:p-4 sm:items-center">
+      <Card className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-b-none sm:rounded-b-xl sm:max-h-[90vh]">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-ink">{request.siteName}</h2>
             <p className="text-sm text-muted">Current status: {STATUS_LABELS[request.status]}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-fill">
+          <button type="button" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-fill">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -199,29 +250,31 @@ function BookingStatusModal({
                 type="button"
                 variant="danger"
                 disabled={saving}
-                onClick={() => applyStatus("CANCELLED", message)}
+                onClick={() => void cancelBooking()}
               >
                 Cancel booking
               </Button>
             </div>
           )}
           {isPending && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                disabled={saving}
-                onClick={() => applyStatus("ACCEPTED", message)}
-              >
-                Accept
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                disabled={saving || !message.trim()}
-                onClick={() => applyStatus("DENIED", message)}
-              >
-                Deny
-              </Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" disabled={saving} onClick={() => void acceptRequest()}>
+                  Accept
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={saving}
+                  onClick={() => void denyRequest()}
+                >
+                  Deny
+                </Button>
+              </div>
+              {acceptError && <p className="text-sm text-red-600">{acceptError}</p>}
+              <p className="text-xs text-muted">
+                Deny and cancel are always available, even when another site has approved hours.
+              </p>
             </div>
           )}
           <div>
@@ -239,7 +292,8 @@ function BookingStatusModal({
           </div>
           <div>
             <Label>
-              Message to site manager{newStatus === "DENIED" ? " (required)" : " (optional)"}
+              Message to site manager
+              {newStatus === "DENIED" ? " (optional — used if provided)" : " (optional)"}
             </Label>
             <Input
               value={message}
@@ -254,13 +308,13 @@ function BookingStatusModal({
           <p className="text-xs text-muted">
             The site manager will see this update on the site dashboard notifications widget.
           </p>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
+          {statusError && <p className="text-sm text-red-600">{statusError}</p>}
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button type="button" variant="ghost" className="min-h-11 w-full sm:w-auto" onClick={onClose}>
               Close
             </Button>
             {availableStatuses.length > 0 && (
-              <Button type="submit" disabled={saving || newStatus === request.status}>
+              <Button type="submit" className="min-h-11 w-full sm:w-auto" disabled={saving || newStatus === request.status}>
                 {saving ? "Updating…" : "Update status"}
               </Button>
             )}
@@ -338,6 +392,8 @@ export function AdminLabourCalendarClient({
   async function handleReschedule(requestId: string, fromDate: string, toDate: string) {
     const request = requests.find((r) => r.id === requestId);
     if (!request) return;
+
+    setLoadError("");
 
     const conflict = rescheduleConflictMessage(requests, request, fromDate, toDate);
     if (conflict) {
@@ -418,7 +474,12 @@ export function AdminLabourCalendarClient({
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-3 rounded border border-accent bg-accent/15" /> Accepted
         </span>
-        <span>Drag bookings to another day to reschedule (same worker cannot be double-booked)</span>
+        <span className="hidden sm:inline">
+          Drag bookings to reschedule. Approval is blocked only when hours are already approved elsewhere.
+        </span>
+        <span className="sm:hidden">
+          Tap a booking to review. Use Move below a booking to reschedule.
+        </span>
       </div>
 
       {loading ? (
@@ -440,6 +501,7 @@ export function AdminLabourCalendarClient({
         <BookingStatusModal
           key={selected.id}
           request={requests.find((r) => r.id === selected.id) ?? selected}
+          allRequests={requests}
           onClose={() => setSelected(null)}
           onUpdated={reload}
         />

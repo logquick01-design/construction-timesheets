@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { findWorkerBookingConflict } from "@/lib/labour-conflicts";
 import { canReviewLabourRequests } from "@/lib/permissions";
 import {
   labourNotificationMeta,
@@ -57,6 +58,17 @@ export async function POST(request: Request, context: RouteContext) {
     const dates = existing.days.map((d) => formatDate(d.date));
     const workerNames = existing.workers.map((w) => w.worker.name);
     const notification = labourStatusNotificationContent(newStatus, message);
+
+    if (newStatus === "ACCEPTED") {
+      const conflict = await findWorkerBookingConflict(prisma, {
+        workerIds: existing.workers.map((w) => w.workerId),
+        dates,
+        excludeRequestId: id,
+      });
+      if (conflict) {
+        return NextResponse.json({ error: conflict }, { status: 400 });
+      }
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const labourRequest = await tx.labourRequest.update({

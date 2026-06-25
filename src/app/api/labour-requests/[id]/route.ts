@@ -92,16 +92,19 @@ export async function PATCH(request: Request, context: RouteContext) {
   const previousHours = existing.workers[0]?.hoursPerDay ?? 8;
   const workerIdsForConflict = existing.workers.map((w) => w.workerId);
 
-  if (dates) {
-    const nextDates = uniqueDateStrings(dates);
-    const conflict = await findWorkerBookingConflict(prisma, {
-      siteId: existing.siteId,
-      workerIds: workerIdsForConflict,
-      dates: nextDates,
-      excludeRequestId: id,
-    });
-    if (conflict) {
-      return NextResponse.json({ error: conflict }, { status: 400 });
+  if (dates || workerIds) {
+    const nextDates = dates ? uniqueDateStrings(dates) : previousDates;
+    const nextWorkerIds = workerIds ? [...new Set(workerIds)] : workerIdsForConflict;
+
+    if (isAdmin) {
+      const conflict = await findWorkerBookingConflict(prisma, {
+        workerIds: nextWorkerIds,
+        dates: nextDates,
+        excludeRequestId: id,
+      });
+      if (conflict) {
+        return NextResponse.json({ error: conflict }, { status: 400 });
+      }
     }
   }
 

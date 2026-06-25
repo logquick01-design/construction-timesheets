@@ -33,6 +33,7 @@ export function asWorkerList(body: unknown): body is Array<{
   id: string;
   name: string;
   trade: string;
+  personId?: string | null;
   company: { id: string; name: string } | null;
 }> {
   return Array.isArray(body);
